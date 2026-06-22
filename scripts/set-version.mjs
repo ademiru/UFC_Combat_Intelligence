@@ -21,14 +21,12 @@ tauriConfig.version = version;
 await writeFile(tauriPath, `${JSON.stringify(tauriConfig, null, 2)}\n`, "utf8");
 
 const cargoToml = await readFile(cargoPath, "utf8");
-const nextCargoToml = cargoToml.replace(
-  /(\[package\][\s\S]*?\nversion\s*=\s*")[^"]+("\s*)/,
-  `$1${version}$2`,
-);
+const cargoVersionPattern = /(\[package\][\s\S]*?\nversion\s*=\s*")[^"]+("\s*)/;
 
-if (nextCargoToml === cargoToml) {
+if (!cargoVersionPattern.test(cargoToml)) {
   throw new Error("Cargo.toml içindeki paket sürümü bulunamadı.");
 }
 
+const nextCargoToml = cargoToml.replace(cargoVersionPattern, `$1${version}$2`);
 await writeFile(cargoPath, nextCargoToml, "utf8");
 console.log(`UFC Panel sürümü ${version} olarak ayarlandı.`);
