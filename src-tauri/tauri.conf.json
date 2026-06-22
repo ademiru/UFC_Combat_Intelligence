@@ -48,7 +48,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc2OTIwM0IzMzYyNERDNApSV1RFVFdJek95QnBCNGxqK3JaOGpiTUhRWjZTZFJEMHErSEtaS1B3WlVBRVh4eDgyMjUxcjVWTgo=",
       "endpoints": [
-        "https://github.com/ademiru/Ufc_Core_Intelligence/releases/latest/download/latest.json"
+        "https://github.com/ademiru/UFC_Combat_Intelligence/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"
