@@ -1,0 +1,135 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --font-sans: var(--font-sans-app);
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-lg: 0;
+  --radius-xl: 0;
+}
+
+:root {
+  color-scheme: dark;
+  --radius: 0;
+  --background: #050607;
+  --foreground: #e7e9ec;
+  --card: #090b0d;
+  --card-foreground: #f4f4f5;
+  --primary: #d20a0a;
+  --primary-foreground: #ffffff;
+  --muted: #18181b;
+  --muted-foreground: #71717a;
+  --border: rgba(161, 167, 179, 0.14);
+  --font-sans-app: "Cascadia Mono", "JetBrains Mono", "SFMono-Regular", Consolas,
+    "Liberation Mono", monospace;
+}
+
+* {
+  border-color: var(--border);
+}
+
+/* Terminal UI: no component is allowed to reintroduce soft corners. */
+button,
+input,
+select,
+textarea,
+[class*="rounded-"] {
+  border-radius: 0 !important;
+}
+
+html {
+  background: var(--background);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(210, 10, 10, 0.025), transparent 24%),
+    var(--background);
+  background-size: 24px 24px, 24px 24px, 100% 100%, auto;
+  color: var(--foreground);
+  font-family: var(--font-sans-app);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body::after {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0,
+    transparent 3px,
+    rgba(255, 255, 255, 0.012) 3px,
+    rgba(255, 255, 255, 0.012) 4px
+  );
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+main h2 {
+  text-transform: uppercase;
+  letter-spacing: -0.045em;
+}
+
+main section,
+main [class*="border-white"] {
+  box-shadow: none !important;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 1px solid rgba(239, 68, 68, 0.8);
+  outline-offset: 2px;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: rgba(210, 10, 10, 0.45);
+  color: white;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #08090a;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid #08090a;
+  border-radius: 0;
+  background: #29292e;
+}

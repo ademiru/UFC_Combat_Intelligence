@@ -1,0 +1,85 @@
+name: Signed Windows release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "SemVer sürümü (ör. 0.2.0)"
+        required: true
+        type: string
+      release_notes:
+        description: "Kullanıcıya gösterilecek kısa sürüm notu"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: pnpm kur
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.8.0
+
+      - name: Node.js kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Rust kur
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust önbelleği
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Bağımlılıkları kur
+        run: pnpm install --frozen-lockfile
+
+      - name: Sürümü senkronize et
+        run: node scripts/set-version.mjs "${{ inputs.version }}"
+
+      - name: Güncelleme adresini oluştur
+        shell: pwsh
+        run: |
+          $config = @{
+            plugins = @{
+              updater = @{
+                endpoints = @("https://github.com/${{ github.repository }}/releases/latest/download/latest.json")
+              }
+            }
+          } | ConvertTo-Json -Depth 5
+          [IO.File]::WriteAllText(
+            "src-tauri/tauri.release.conf.json",
+            $config,
+            [Text.UTF8Encoding]::new($false)
+          )
+
+      - name: Kod kalitesini doğrula
+        run: pnpm typecheck
+
+      - name: İmzalı Windows paketini üret
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: "UFC Panel v__VERSION__"
+          releaseBody: ${{ inputs.release_notes }}
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          args: --bundles nsis --config src-tauri/tauri.release.conf.json
