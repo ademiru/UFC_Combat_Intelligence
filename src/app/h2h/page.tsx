@@ -167,6 +167,9 @@ export default function HeadToHeadPage() {
   const recentA = fightHistory.filter((fight) => fight.fighter_id === fighterA.id);
   const recentB = fightHistory.filter((fight) => fight.fighter_id === fighterB.id);
   const matchup = calculateMatchup(fighterA, fighterB, recentA, recentB);
+  const commonOpponents = recentA
+    .filter((fightA) => recentB.some((fightB) => fightB.opponent_name === fightA.opponent_name))
+    .map((fightA) => ({ first: fightA, second: recentB.find((fightB) => fightB.opponent_name === fightA.opponent_name)! }));
 
   return (
     <div className="space-y-6">
@@ -315,7 +318,7 @@ export default function HeadToHeadPage() {
           </div>
           <div className="mt-7 flex items-end justify-between">
             <div>
-              <p className="text-4xl font-black tracking-tighter text-white">
+              <p className="font-display text-5xl leading-none font-bold tracking-tight text-white tabular-nums">
                 %{matchup.probabilityA}
               </p>
               <p className="mt-1 max-w-32 text-[10px] leading-4 text-zinc-500">
@@ -324,7 +327,7 @@ export default function HeadToHeadPage() {
             </div>
             <Swords className="mb-5 size-5 text-zinc-700" />
             <div className="text-right">
-              <p className="text-4xl font-black tracking-tighter text-white">
+              <p className="font-display text-5xl leading-none font-bold tracking-tight text-white tabular-nums">
                 %{matchup.probabilityB}
               </p>
               <p className="mt-1 ml-auto max-w-32 text-[10px] leading-4 text-zinc-500">
@@ -371,6 +374,19 @@ export default function HeadToHeadPage() {
             })}
           </div>
         </div>
+      </section>
+
+      <section className="grid grid-cols-2 gap-5">
+        <article className="border border-white/[0.07] bg-[#0d0f12] p-6">
+          <div className="flex items-center justify-between"><div><p className="text-sm font-bold text-white">Ortak hedefler</p><p className="mt-1 text-[10px] text-zinc-600">İki operasyon kaydındaki ortak rakipler</p></div><Target className="size-4 text-red-500" /></div>
+          {commonOpponents.length ? <div className="mt-5 divide-y divide-white/[0.06]">{commonOpponents.map(({first, second}) => <div key={first.opponent_name} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 py-4 text-[10px]"><span className="text-right text-zinc-400">{first.result} · {first.method} · R{first.round}</span><span className="border border-white/[0.08] px-3 py-2 font-bold text-white">{first.opponent_name}</span><span className="text-zinc-400">{second.result} · {second.method} · R{second.round}</span></div>)}</div> : <p className="mt-5 border border-dashed border-white/[0.08] p-8 text-center text-[10px] text-zinc-600">Yerel son maç kayıtlarında ortak rakip bulunamadı.</p>}
+        </article>
+        <article className="border border-white/[0.07] bg-[#0d0f12] p-6">
+          <div><p className="text-sm font-bold text-white">Hasar haritası</p><p className="mt-1 text-[10px] text-zinc-600">Alınan darbe verisi bulunmadığı için hücum hedef dağılımı gösterilir</p></div>
+          <div className="mt-6 grid grid-cols-2 gap-8">
+            {[fighterA, fighterB].map((fighter, index) => <div key={fighter.id}><p className={`mb-4 text-center text-[10px] font-bold ${index === 0 ? "text-red-400" : "text-blue-400"}`}>{fighter.name}</p><div className="mx-auto w-36 space-y-2"><div className="mx-auto grid size-12 place-items-center rounded-full border-4 border-red-500/30 bg-red-500/20 text-[9px] font-black text-white">%{Math.round(fighter.head_pct)}</div><div className="mx-auto grid h-20 w-20 place-items-center border-4 border-amber-500/30 bg-amber-500/15 text-[9px] font-black text-white">%{Math.round(fighter.body_pct)}</div><div className="mx-auto flex w-20 justify-between"><span className="h-16 w-7 bg-blue-500/20 border border-blue-500/30"/><span className="h-16 w-7 bg-blue-500/20 border border-blue-500/30"/></div><p className="text-center text-[8px] text-blue-400">Bacak %{Math.round(fighter.leg_pct)}</p></div></div>)}
+          </div>
+        </article>
       </section>
     </div>
   );

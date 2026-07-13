@@ -24,6 +24,326 @@ const UFC_BASE_URL: &str = "https://www.ufc.com";
 const MAX_UPCOMING_EVENTS: usize = 5;
 const PROFILE_CONCURRENCY: usize = 6;
 
+fn athlete_slug(athlete_url: &str) -> String {
+    athlete_url
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or("fighter")
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub async fn repair_cached_fighter_images(app: AppHandle) -> Result<usize, String> {
+    let image_directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Fotoğraf önbellek yolu bulunamadı: {error}"))?
+        .join("fighter-images");
+    if tokio::fs::metadata(&image_directory).await.is_err() {
+        return Ok(0);
+    }
+
+    let database_path = database_path(&app)?;
+    let mut connection = connect_database(&database_path).await?;
+    let fighters = sqlx::query_as::<_, (i64, String)>(
+        "SELECT id, source_url FROM fighters WHERE source_url IS NOT NULL",
+    )
+    .fetch_all(&mut connection)
+    .await
+    .map_err(|error| format!("Sporcu görsel kayıtları okunamadı: {error}"))?;
+
+    let mut directory = tokio::fs::read_dir(&image_directory)
+        .await
+        .map_err(|error| format!("Fotoğraf önbelleği okunamadı: {error}"))?;
+    let mut cached_files = Vec::new();
+    while let Some(entry) = directory
+        .next_entry()
+        .await
+        .map_err(|error| format!("Fotoğraf dosyası okunamadı: {error}"))?
+    {
+        if entry
+            .file_type()
+            .await
+            .map(|kind| kind.is_file())
+            .unwrap_or(false)
+        {
+            cached_files.push(entry.path());
+        }
+    }
+
+    let mut repaired = 0usize;
+    for (fighter_id, source_url) in fighters {
+        let prefix = format!("{}-", athlete_slug(&source_url));
+        if let Some(path) = cached_files.iter().find(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(&prefix))
+        }) {
+            sqlx::query("UPDATE fighters SET image_path = ? WHERE id = ?")
+                .bind(path.to_string_lossy().as_ref())
+                .bind(fighter_id)
+                .execute(&mut connection)
+                .await
+                .map_err(|error| format!("Fotoğraf kaydı onarılamadı: {error}"))?;
+            repaired += 1;
+        }
+    }
+
+    sqlx::query(
+        "UPDATE app_metadata SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = 'fighter_images_cached'",
+    )
+    .bind(repaired.to_string())
+    .execute(&mut connection)
+    .await
+    .map_err(|error| format!("Fotoğraf sayacı güncellenemedi: {error}"))?;
+    Ok(repaired)
+}
+
+#[tauri::command]
+pub async fn sync_live_event_results(app: AppHandle) -> Result<usize, String> {
+    let client = Client::builder()
+        .user_agent("UFC Panel/0.1 (+live event results)")
+        .timeout(Duration::from_secs(20))
+        .connect_timeout(Duration::from_secs(8))
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .build()
+        .map_err(|error| format!("Canlı sonuç istemcisi hazırlanamadı: {error}"))?;
+    let database_path = database_path(&app)?;
+    let mut connection = connect_database(&database_path).await?;
+    let event_urls = sqlx::query_scalar::<_, String>(
+        "SELECT source_url FROM events WHERE source_url IS NOT NULL ORDER BY date DESC LIMIT 8",
+    )
+    .fetch_all(&mut connection)
+    .await
+    .map_err(|error| format!("İzlenecek etkinlikler okunamadı: {error}"))?;
+    let results_index = fetch_html(&client, &format!("{UFC_BASE_URL}/results"))
+        .await
+        .unwrap_or_default();
+    let mut event_pages = stream::iter(event_urls.into_iter().map(|url| {
+        let client = client.clone();
+        async move {
+            fetch_html(&client, &url)
+                .await
+                .and_then(|html| parse_event_page(&url, &html))
+        }
+    }))
+    .buffer_unordered(3)
+    .filter_map(|result| async move { result.ok() })
+    .collect::<Vec<_>>()
+    .await;
+
+    let result_article_links = parse_recent_result_article_links(&results_index);
+    let result_articles = stream::iter(result_article_links.into_iter().take(16).map(|link| {
+        let client = client.clone();
+        async move { fetch_html(&client, &link).await.ok() }
+    }))
+    .buffer_unordered(5)
+    .filter_map(|html| async move { html })
+    .collect::<Vec<_>>()
+    .await;
+    let global_result_text = result_articles
+        .iter()
+        .map(|html| collapse_text(Html::parse_document(html).root_element().text()))
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    for event in &mut event_pages {
+        let article_links = parse_result_article_links(&results_index, &event.source_url);
+        let mut article_text = String::new();
+        for link in article_links.into_iter().take(3) {
+            if let Ok(html) = fetch_html(&client, &link).await {
+                article_text.push(' ');
+                article_text.push_str(&collapse_text(
+                    Html::parse_document(&html).root_element().text(),
+                ));
+            }
+        }
+        if !article_text.is_empty() {
+            enrich_fights_from_result_text(&mut event.fights, &article_text);
+        }
+        if !global_result_text.is_empty() {
+            enrich_fights_from_result_text(&mut event.fights, &global_result_text);
+        }
+    }
+
+    let today = Utc::now().date_naive().format("%Y-%m-%d").to_string();
+    let mut updated = 0usize;
+    for event in event_pages {
+        let status = if event.date < today {
+            "archived"
+        } else {
+            "upcoming"
+        };
+        sqlx::query("UPDATE events SET status = ?, start_time = ? WHERE source_url = ?")
+            .bind(status)
+            .bind(&event.start_time)
+            .bind(&event.source_url)
+            .execute(&mut connection)
+            .await
+            .map_err(|error| format!("Etkinlik canlı durumu güncellenemedi: {error}"))?;
+
+        for fight in event
+            .fights
+            .into_iter()
+            .filter(|fight| !fight.result.is_empty())
+        {
+            let result = sqlx::query(
+                r#"
+                UPDATE fights SET result = ?, method = NULLIF(?, ''), round = NULLIF(?, 0), fight_time = NULLIF(?, '')
+                WHERE event_id = (SELECT id FROM events WHERE source_url = ? LIMIT 1)
+                  AND fighter1_id = (SELECT id FROM fighters WHERE source_url = ? LIMIT 1)
+                  AND fighter2_id = (SELECT id FROM fighters WHERE source_url = ? LIMIT 1)
+                "#,
+            )
+            .bind(&fight.result)
+            .bind(&fight.method)
+            .bind(fight.round)
+            .bind(&fight.fight_time)
+            .bind(&event.source_url)
+            .bind(&fight.fighter1_url)
+            .bind(&fight.fighter2_url)
+            .execute(&mut connection)
+            .await
+            .map_err(|error| format!("Canlı maç sonucu güncellenemedi: {error}"))?;
+            updated += result.rows_affected() as usize;
+        }
+    }
+    Ok(updated)
+}
+
+fn parse_recent_result_article_links(html: &str) -> Vec<String> {
+    let document = Html::parse_document(html);
+    let link_selector = selector("a[href]");
+    let mut seen = HashSet::new();
+    document
+        .select(&link_selector)
+        .filter_map(|link| link.value().attr("href"))
+        .filter(|href| href.contains("/news/") && href.to_lowercase().contains("result"))
+        .map(absolute_ufc_url)
+        .filter(|url| seen.insert(url.clone()))
+        .collect()
+}
+
+fn parse_result_article_links(html: &str, event_url: &str) -> Vec<String> {
+    let slug = event_url
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or_default();
+    if slug.is_empty() {
+        return Vec::new();
+    }
+    let document = Html::parse_document(html);
+    let link_selector = selector("a[href]");
+    let mut seen = HashSet::new();
+    document
+        .select(&link_selector)
+        .filter_map(|link| link.value().attr("href"))
+        .filter(|href| href.contains("/news/") && href.contains(slug) && href.contains("result"))
+        .map(absolute_ufc_url)
+        .filter(|url| seen.insert(url.clone()))
+        .collect()
+}
+
+fn enrich_fights_from_result_text(fights: &mut [FightUpdate], text: &str) {
+    let searchable_text = fold_result_text(text);
+    for fight in fights {
+        for (winner_is_red, winner, loser) in [
+            (
+                true,
+                fight.fighter1_name.as_str(),
+                fight.fighter2_name.as_str(),
+            ),
+            (
+                false,
+                fight.fighter2_name.as_str(),
+                fight.fighter1_name.as_str(),
+            ),
+        ] {
+            let pattern = format!(
+                r"(?i){}\s+defeated\s+{}\s+by\s+([^.]+)",
+                regex::escape(&fold_result_text(winner)),
+                regex::escape(&fold_result_text(loser))
+            );
+            let Some(captures) = Regex::new(&pattern)
+                .ok()
+                .and_then(|regex| regex.captures(&searchable_text))
+            else {
+                continue;
+            };
+            let detail = captures
+                .get(1)
+                .map(|value| value.as_str().trim())
+                .unwrap_or_default();
+            let timing = Regex::new(r"(?i)\s+at\s+([0-9]+:[0-9]{2})\s+of\s+Round\s+([1-5])")
+                .ok()
+                .and_then(|regex| regex.captures(detail));
+            fight.fight_time = timing
+                .as_ref()
+                .and_then(|captures| captures.get(1))
+                .map(|value| value.as_str().to_string())
+                .unwrap_or_default();
+            fight.round = timing
+                .as_ref()
+                .and_then(|captures| captures.get(2))
+                .and_then(|value| value.as_str().parse::<i64>().ok())
+                .unwrap_or_default();
+            let method_detail = Regex::new(r"(?i)\s+at\s+[0-9]+:[0-9]{2}\s+of\s+Round\s+[1-5]")
+                .ok()
+                .map(|regex| regex.replace(detail, "").trim().to_string())
+                .unwrap_or_else(|| detail.to_string());
+            fight.method = Regex::new(
+                r"(?i)^(unanimous decision(?: \([^)]+\))?|split decision(?: \([^)]+\))?|majority decision(?: \([^)]+\))?|technical submission(?: \([^)]+\))?|submission(?: \([^)]+\))?|tko(?: \([^)]+\))?|ko(?: \([^)]+\))?|doctor stoppage|disqualification|no contest)",
+            )
+            .ok()
+            .and_then(|regex| regex.captures(&method_detail))
+            .and_then(|captures| captures.get(1))
+            .map(|value| value.as_str().to_string())
+            .unwrap_or(method_detail);
+            if fight.round == 0 && fight.method.to_lowercase().contains("decision") {
+                fight.round = if fight.card_type == "Main Card" && fight.bout_order == 1 {
+                    5
+                } else {
+                    3
+                };
+                fight.fight_time = "5:00".into();
+            }
+            fight.result = if winner_is_red { "W" } else { "L" }.into();
+            break;
+        }
+    }
+}
+
+fn fold_result_text(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| match character {
+            'á' | 'à' | 'â' | 'ä' | 'ã' | 'å' | 'Á' | 'À' | 'Â' | 'Ä' | 'Ã' | 'Å' => {
+                'a'
+            }
+            'ç' | 'Ç' => 'c',
+            'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' | 'Ë' => 'e',
+            'í' | 'ì' | 'î' | 'ï' | 'Í' | 'Ì' | 'Î' | 'Ï' => 'i',
+            'ñ' | 'Ñ' => 'n',
+            'ó' | 'ò' | 'ô' | 'ö' | 'õ' | 'Ó' | 'Ò' | 'Ô' | 'Ö' | 'Õ' => 'o',
+            'ú' | 'ù' | 'û' | 'ü' | 'Ú' | 'Ù' | 'Û' | 'Ü' => 'u',
+            'ý' | 'ÿ' | 'Ý' => 'y',
+            '’' | '‘' | '\'' | '�' => '\0',
+            other => other.to_ascii_lowercase(),
+        })
+        .filter(|character| *character != '\0')
+        .collect()
+}
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncProgress {
@@ -63,6 +383,10 @@ struct FightUpdate {
     weight_class: String,
     card_type: String,
     bout_order: i64,
+    result: String,
+    method: String,
+    round: i64,
+    fight_time: String,
 }
 
 #[derive(Clone, Debug)]
@@ -457,7 +781,14 @@ pub async fn sync_online_data(app: AppHandle) -> Result<SyncReport, String> {
         .await?;
 
         sqlx::query(
-            "INSERT INTO champions(weight_class, fighter_id, display_order, since_text) VALUES (?, ?, ?, 'Live UFC sync')",
+            r#"
+            INSERT INTO champions(weight_class, fighter_id, display_order, since_text)
+            VALUES (?, ?, ?, 'Live UFC sync')
+            ON CONFLICT(weight_class) DO UPDATE SET
+                fighter_id = excluded.fighter_id,
+                display_order = excluded.display_order,
+                since_text = excluded.since_text
+            "#,
         )
         .bind(&champion.weight_class)
         .bind(fighter_id)
@@ -476,16 +807,21 @@ pub async fn sync_online_data(app: AppHandle) -> Result<SyncReport, String> {
 
     let mut fights_updated = 0usize;
     for event in &events {
+        let event_status = if event.date < today {
+            "archived"
+        } else {
+            "upcoming"
+        };
         sqlx::query(
             r#"
             INSERT INTO events(name, date, location, start_time, status, source_url)
-            VALUES (?, ?, ?, ?, 'upcoming', ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT DO UPDATE SET
                 name = excluded.name,
                 date = excluded.date,
                 location = excluded.location,
                 start_time = excluded.start_time,
-                status = 'upcoming',
+                status = excluded.status,
                 source_url = excluded.source_url
             "#,
         )
@@ -493,6 +829,7 @@ pub async fn sync_online_data(app: AppHandle) -> Result<SyncReport, String> {
         .bind(&event.date)
         .bind(&event.location)
         .bind(&event.start_time)
+        .bind(event_status)
         .bind(&event.source_url)
         .execute(&mut *transaction)
         .await
@@ -531,8 +868,8 @@ pub async fn sync_online_data(app: AppHandle) -> Result<SyncReport, String> {
                 r#"
                 INSERT INTO fights (
                     event_id, fighter1_id, fighter2_id, weight_class,
-                    card_type, bout_order
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    card_type, bout_order, result, method, round, fight_time
+                ) VALUES (?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, 0), NULLIF(?, ''))
                 "#,
             )
             .bind(event_id)
@@ -541,6 +878,10 @@ pub async fn sync_online_data(app: AppHandle) -> Result<SyncReport, String> {
             .bind(&fight.weight_class)
             .bind(&fight.card_type)
             .bind(fight.bout_order)
+            .bind(&fight.result)
+            .bind(&fight.method)
+            .bind(fight.round)
+            .bind(&fight.fight_time)
             .execute(&mut *transaction)
             .await
             .map_err(|error| format!("{} eşleşmesi kaydedilemedi: {error}", event.name))?;
@@ -695,20 +1036,7 @@ async fn cache_fighter_image(
     athlete_url: &str,
     image_url: &str,
 ) -> Result<String, String> {
-    let slug = athlete_url
-        .trim_end_matches('/')
-        .rsplit('/')
-        .next()
-        .unwrap_or("fighter")
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>();
+    let slug = athlete_slug(athlete_url);
     let extension = image_url
         .split('?')
         .next()
@@ -754,13 +1082,24 @@ fn parse_rankings(html: &str) -> Vec<ChampionUpdate> {
     let header_selector = selector(".view-grouping-header");
     let champion_selector = selector(".rankings--athlete--champion h5 a");
     let mut output = Vec::new();
+    let mut seen_weight_classes = HashSet::new();
 
     for group in document.select(&group_selector) {
         let Some(header) = group.select(&header_selector).next() else {
             continue;
         };
         let weight_class = collapse_text(header.text());
-        if weight_class.contains("Pound-for-Pound") || weight_class.is_empty() {
+        let normalized_weight_class = weight_class
+            .to_lowercase()
+            .replace(['’', '‘'], "'")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if normalized_weight_class.contains("pound-for-pound")
+            || normalized_weight_class.contains("pound for pound")
+            || weight_class.is_empty()
+            || !seen_weight_classes.insert(normalized_weight_class)
+        {
             continue;
         }
         let Some(champion) = group.select(&champion_selector).next() else {
@@ -857,6 +1196,12 @@ fn parse_fight_group(document: &Html, root: &str, card_type: &str) -> Vec<FightU
     let class_selector = selector(".c-listing-fight__class--desktop .c-listing-fight__class-text");
     let red_selector = selector(".c-listing-fight__corner-name--red a");
     let blue_selector = selector(".c-listing-fight__corner-name--blue a");
+    let red_outcome_selector = selector(".c-listing-fight__corner--red .c-listing-fight__outcome");
+    let blue_outcome_selector =
+        selector(".c-listing-fight__corner--blue .c-listing-fight__outcome");
+    let round_selector = selector(".c-listing-fight__result-text.round");
+    let time_selector = selector(".c-listing-fight__result-text.time");
+    let method_selector = selector(".c-listing-fight__result-text.method");
     let Some(container) = document.select(&root_selector).next() else {
         return Vec::new();
     };
@@ -885,6 +1230,43 @@ fn parse_fight_group(document: &Html, root: &str, card_type: &str) -> Vec<FightU
             .next()
             .map(|element| collapse_text(element.text()).replace(" Bout", ""))
             .unwrap_or_else(|| "Open Weight".into());
+        let red_outcome = fight
+            .select(&red_outcome_selector)
+            .next()
+            .map(|element| collapse_text(element.text()).to_uppercase())
+            .unwrap_or_default();
+        let blue_outcome = fight
+            .select(&blue_outcome_selector)
+            .next()
+            .map(|element| collapse_text(element.text()).to_uppercase())
+            .unwrap_or_default();
+        let result = if red_outcome == "W" || red_outcome == "WIN" {
+            "W"
+        } else if blue_outcome == "W" || blue_outcome == "WIN" {
+            "L"
+        } else if red_outcome == "D" || blue_outcome == "D" {
+            "D"
+        } else if red_outcome == "NC" || blue_outcome == "NC" {
+            "NC"
+        } else {
+            ""
+        };
+        let round = fight
+            .select(&round_selector)
+            .next()
+            .map(|element| collapse_text(element.text()))
+            .and_then(|value| value.parse::<i64>().ok())
+            .unwrap_or_default();
+        let fight_time = fight
+            .select(&time_selector)
+            .next()
+            .map(|element| collapse_text(element.text()))
+            .unwrap_or_default();
+        let method = fight
+            .select(&method_selector)
+            .next()
+            .map(|element| collapse_text(element.text()))
+            .unwrap_or_default();
 
         output.push(FightUpdate {
             fighter1_name,
@@ -894,6 +1276,10 @@ fn parse_fight_group(document: &Html, root: &str, card_type: &str) -> Vec<FightU
             weight_class,
             card_type: card_type.into(),
             bout_order: (index + 1) as i64,
+            result: result.into(),
+            method,
+            round,
+            fight_time,
         });
     }
 
@@ -1281,6 +1667,53 @@ mod tests {
         "#;
         let fighter = parse_fighter_profile("https://www.ufc.com/athlete/test", html).unwrap();
         assert_eq!(fighter.image_url, "https://ufc.com/images/fighter.png");
+    }
+
+    #[test]
+    fn rankings_ignore_duplicate_weight_class_groups() {
+        let html = r#"
+          <div class="view-grouping">
+            <div class="view-grouping-header">Flyweight</div>
+            <div class="rankings--athlete--champion"><h5><a href="/athlete/joshua-van">Joshua Van</a></h5></div>
+          </div>
+          <div class="view-grouping">
+            <div class="view-grouping-header"> Flyweight </div>
+            <div class="rankings--athlete--champion"><h5><a href="/athlete/duplicate">Duplicate Entry</a></h5></div>
+          </div>
+          <div class="view-grouping">
+            <div class="view-grouping-header">Men's Pound for Pound</div>
+            <div class="rankings--athlete--champion"><h5><a href="/athlete/p4p">P4P Entry</a></h5></div>
+          </div>
+        "#;
+        let champions = parse_rankings(html);
+        assert_eq!(champions.len(), 1);
+        assert_eq!(champions[0].name, "Joshua Van");
+        assert_eq!(champions[0].weight_class, "Flyweight");
+    }
+
+    #[test]
+    fn enriches_event_fights_from_official_result_article() {
+        let mut fights = vec![FightUpdate {
+            fighter1_name: "Benoît Saint Denis".into(),
+            fighter1_url: "https://www.ufc.com/athlete/benoit-saint-denis".into(),
+            fighter2_name: "Paddy Pimblett".into(),
+            fighter2_url: "https://www.ufc.com/athlete/paddy-pimblett".into(),
+            weight_class: "Lightweight".into(),
+            card_type: "Main Card".into(),
+            bout_order: 2,
+            result: String::new(),
+            method: String::new(),
+            round: 0,
+            fight_time: String::new(),
+        }];
+        enrich_fights_from_result_text(
+            &mut fights,
+            "Paddy Pimblett defeated Benoit Saint Denis by technical submission (D’arce choke) at 0:52 of Round 1.",
+        );
+        assert_eq!(fights[0].result, "L");
+        assert_eq!(fights[0].method, "technical submission (darce choke)");
+        assert_eq!(fights[0].round, 1);
+        assert_eq!(fights[0].fight_time, "0:52");
     }
 
     #[test]

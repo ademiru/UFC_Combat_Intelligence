@@ -6,8 +6,12 @@ import { AppShell } from "@/components/layout/app-shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "UFC Panel | Combat Intelligence",
-  description: "Local-first UFC analytics and fighter comparison desktop app",
+  title: "Combat Intelligence",
+  description: "UFC analiz, etkinlik ve dövüşçü istihbarat platformu",
+  icons: {
+    icon: "/brand/combat-mark.png",
+    apple: "/brand/combat-mark.png",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

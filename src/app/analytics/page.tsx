@@ -7,13 +7,17 @@ import {
   Gauge,
   HeartPulse,
   Medal,
+  Ruler,
+  Sparkles,
   ShieldCheck,
   Swords,
   Target,
   Trophy,
 } from "lucide-react";
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
+  Area,
   Bar,
   BarChart,
   CartesianGrid,
@@ -22,6 +26,10 @@ import {
   LineChart,
   Pie,
   PieChart,
+  PolarAngleAxis,
+  PolarGrid,
+  Radar,
+  RadarChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -29,6 +37,7 @@ import {
 } from "recharts";
 
 import { useUfcData } from "@/components/providers/data-provider";
+import { FighterVideoLibrary } from "@/components/features/fighter-video-library";
 import { DataState } from "@/components/shared/data-state";
 import { FighterAvatar } from "@/components/shared/fighter-avatar";
 
@@ -48,7 +57,17 @@ function formatFightDate(value: string) {
 }
 
 export default function AnalyticsPage() {
+  return (
+    <Suspense fallback={<div className="border border-white/[0.08] bg-[#0d0f12] p-6 text-xs text-zinc-500">Dövüşçü profili hazırlanıyor...</div>}>
+      <AnalyticsContent />
+    </Suspense>
+  );
+}
+
+function AnalyticsContent() {
   const { fighters, fightHistory, loading, error, refresh } = useUfcData();
+  const searchParams = useSearchParams();
+  const fighterIdFromUrl = Number(searchParams.get("fighter")) || null;
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
   if (loading || error) {
@@ -58,7 +77,7 @@ export default function AnalyticsPage() {
   }
 
   const fighter =
-    fighters.find((item) => item.id === selectedId) ??
+    fighters.find((item) => item.id === (selectedId ?? fighterIdFromUrl)) ??
     fighters.find((item) => item.name === "Islam Makhachev") ??
     fighters[0];
 
@@ -83,17 +102,34 @@ export default function AnalyticsPage() {
   const recentFights = fightHistory
     .filter((fight) => fight.fighter_id === fighter.id)
     .slice(0, 5);
+  const totalFights = fighter.wins + fighter.losses + fighter.draws;
+  const winRate = Math.round((fighter.wins / Math.max(1, totalFights)) * 100);
+  const finishes = fighter.ko_wins + fighter.submission_wins;
+  const finishRate = Math.round((finishes / Math.max(1, fighter.wins)) * 100);
+  const arsenalData = [
+    { skill: "Vuruş", score: Math.min(100, Math.round((fighter.slpm / 7) * 55 + fighter.str_acc * 45)) },
+    { skill: "Güç", score: Math.min(100, Math.round((fighter.ko_wins / Math.max(1, fighter.wins)) * 100)) },
+    { skill: "Savunma", score: Math.round(fighter.str_def * 100) },
+    { skill: "TD Hücum", score: Math.min(100, Math.round((fighter.td_avg / 5) * 60 + fighter.td_acc * 40)) },
+    { skill: "TD Savunma", score: Math.round(fighter.td_def * 100) },
+    { skill: "Submission", score: Math.min(100, Math.round((fighter.sub_avg / 2) * 65 + (fighter.submission_wins / Math.max(1, fighter.wins)) * 35)) },
+  ];
+  const strengths = [
+    fighter.slpm >= 4 ? `Yüksek tempo: dakikada ${fighter.slpm.toFixed(1)} isabetli vuruş` : `Kontrollü tempo: dakikada ${fighter.slpm.toFixed(1)} isabetli vuruş`,
+    finishRate >= 60 ? `Tehlikeli bitirici: galibiyetlerin %${finishRate} kadarı hakem kararına kalmadı` : `Sabırlı maç yönetimi: galibiyetlerin %${100 - finishRate} kadarı kararla geldi`,
+    fighter.td_def >= 0.75 ? `Güçlü güreş savunması: %${Math.round(fighter.td_def * 100)}` : `Takedown savunması geliştirilebilir: %${Math.round(fighter.td_def * 100)}`,
+  ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <section className="flex items-end justify-between gap-6">
         <div>
           <p className="flex items-center gap-2 text-[10px] font-bold tracking-[0.18em] text-red-500 uppercase">
             <Activity className="size-3" />
-            Oktagon Derin Analizi
+            Fighter Intel · Dövüşçü Karnesi
           </p>
           <h2 className="mt-3 text-3xl font-black tracking-[-0.045em] text-white">
-            Bireysel performans profili
+            Operasyonel performans profili
           </h2>
           <p className="mt-2 text-sm text-zinc-500">
             Vuruş seçimi, bitiricilik ve tempo dayanıklılığını birlikte inceleyin.
@@ -113,7 +149,7 @@ export default function AnalyticsPage() {
         </select>
       </section>
 
-      <section className="relative overflow-hidden rounded-2xl border border-white/[0.07] bg-[radial-gradient(circle_at_85%_0%,rgba(210,10,10,0.16),transparent_38%),#0d0f12] p-7">
+      <section className="relative overflow-hidden rounded-2xl border border-white/[0.07] bg-[linear-gradient(135deg,rgba(210,10,10,.05)_0_16%,transparent_16%),#0d0f12] p-5">
         <div className="flex items-center gap-5">
           <FighterAvatar
             name={fighter.name}
@@ -141,7 +177,7 @@ export default function AnalyticsPage() {
               {fighter.country} · {fighter.stance}
             </p>
           </div>
-          <div className="ml-auto grid grid-cols-4 gap-8 border-l border-white/[0.07] pl-8">
+          <div className="ml-auto grid grid-cols-4 gap-4 border-l border-white/[0.07] pl-5">
             {[
               ["Rekor", `${fighter.wins}-${fighter.losses}-${fighter.draws}`],
               ["Vuruş / dk", fighter.slpm.toFixed(2)],
@@ -159,7 +195,51 @@ export default function AnalyticsPage() {
         </div>
       </section>
 
-      <section className="grid grid-cols-4 gap-4">
+      <FighterVideoLibrary
+        key={fighter.id}
+        fighterId={fighter.id}
+        fighterName={fighter.name}
+        sourceUrl={fighter.source_url}
+      />
+
+      <section className="grid grid-cols-[1.25fr_0.75fr] gap-4">
+        <article className="rounded-2xl border border-white/[0.08] bg-[#0d0f12] p-5">
+          <div className="flex items-center justify-between"><div><p className="text-sm font-bold text-white">30 saniyede {fighter.name}</p><p className="mt-1 text-[10px] text-zinc-600">En çok merak edilen kariyer özeti</p></div><Sparkles className="size-4 text-amber-400" /></div>
+          <div className="mt-5 grid grid-cols-4 gap-3">
+            {[
+              ["Profesyonel Rekor", `${fighter.wins}-${fighter.losses}-${fighter.draws}`],
+              ["Galibiyet Oranı", `%${winRate}`],
+              ["Bitiriş Oranı", `%${finishRate}`],
+              ["Aktif Seri", `${fighter.win_streak} maç`],
+            ].map(([label, value]) => <div key={label} className="border border-white/[0.06] bg-black/20 p-4"><p className="text-[8px] font-bold tracking-wider text-zinc-600 uppercase">{label}</p><p className="mt-2 text-xl font-black text-white">{value}</p></div>)}
+          </div>
+          <div className="mt-5 space-y-2">{strengths.map((strength, index) => <div key={strength} className="flex items-center gap-3 border-l-2 border-red-500 bg-white/[0.018] px-4 py-3"><span className="text-[9px] font-black text-red-500">0{index + 1}</span><p className="text-[11px] leading-5 text-zinc-300">{strength}</p></div>)}</div>
+        </article>
+        <article className="rounded-2xl border border-white/[0.08] bg-[#0d0f12] p-5">
+          <div className="flex items-center gap-2"><Ruler className="size-4 text-red-500" /><p className="text-sm font-bold text-white">Fiziksel profil</p></div>
+          <div className="mt-5 divide-y divide-white/[0.06]">{[
+            ["Boy", fighter.height > 0 ? `${fighter.height.toFixed(1)} in · ${Math.round(fighter.height * 2.54)} cm` : "—"],
+            ["Uzanma", fighter.reach > 0 ? `${fighter.reach.toFixed(1)} in · ${Math.round(fighter.reach * 2.54)} cm` : "—"],
+            ["Kilo", fighter.weight > 0 ? `${fighter.weight} lb · ${Math.round(fighter.weight * 0.453592)} kg` : "—"],
+            ["Duruş", fighter.stance || "—"],
+            ["Sıklet", fighter.weight_class],
+          ].map(([label, value]) => <div key={label} className="flex items-center justify-between py-3"><span className="text-[9px] font-bold tracking-wider text-zinc-600 uppercase">{label}</span><span className="text-[11px] font-bold text-zinc-200">{value}</span></div>)}</div>
+        </article>
+      </section>
+
+      <section className="grid grid-cols-[0.9fr_1.1fr] gap-4">
+        <article className="rounded-2xl border border-red-500/15 bg-[#0d0f12] p-5">
+          <div><p className="text-sm font-bold text-white">Cephanelik</p><p className="mt-1 text-[10px] text-zinc-600">Altı temel becerinin 100 üzerinden karşılaştırması</p></div>
+          <div className="mt-1 h-[220px] min-h-[220px] min-w-0"><ResponsiveContainer width="100%" height="100%"><RadarChart data={arsenalData} outerRadius="72%"><defs><linearGradient id="arsenalFill" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#fb7185" stopOpacity={0.55}/><stop offset="100%" stopColor="#991b1b" stopOpacity={0.12}/></linearGradient></defs><PolarGrid stroke="rgba(255,255,255,.13)" radialLines={false}/><PolarAngleAxis dataKey="skill" tick={{fill:"#d4d4d8",fontSize:9,fontWeight:700}}/><Radar dataKey="score" stroke="#fb7185" strokeWidth={2.5} fill="url(#arsenalFill)" fillOpacity={1} dot={{r:3,fill:"#09090b",stroke:"#fb7185",strokeWidth:2}}/><Tooltip contentStyle={chartTooltipStyle}/></RadarChart></ResponsiveContainer></div>
+        </article>
+        <article className="rounded-2xl border border-white/[0.08] bg-[#0d0f12] p-5">
+          <div><p className="text-sm font-bold text-white">Galibiyet nasıl geliyor?</p><p className="mt-1 text-[10px] text-zinc-600">Kariyer galibiyetlerinin sade dağılımı</p></div>
+          <div className="mt-6 grid grid-cols-3 gap-3">{finishData.map((item) => <div key={item.name} className="border border-white/[0.06] p-5 text-center"><span className="mx-auto block size-2" style={{backgroundColor:item.color}}/><p className="mt-3 text-2xl font-black text-white">{item.value}</p><p className="mt-1 text-[9px] font-bold text-zinc-600 uppercase">{item.name}</p></div>)}</div>
+          <p className="mt-5 border-t border-white/[0.06] pt-4 text-[10px] leading-5 text-zinc-500">{fighter.ko_wins >= fighter.submission_wins ? `${fighter.name} galibiyet ararken daha çok vuruş gücüne dayanıyor.` : `${fighter.name} yerde submission tehdidiyle öne çıkıyor.`} Bu dağılım kariyer toplamını gösterir.</p>
+        </article>
+      </section>
+
+      <section className="grid grid-cols-4 gap-3">
         {[
           {
             label: "Toplam bitiriş",
@@ -190,7 +270,7 @@ export default function AnalyticsPage() {
           return (
             <div
               key={metric.label}
-              className="rounded-2xl border border-white/[0.07] bg-[#0d0f12] p-5"
+              className="rounded-2xl border border-white/[0.07] bg-[#0d0f12] p-4"
             >
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-semibold text-zinc-500">
@@ -208,7 +288,7 @@ export default function AnalyticsPage() {
       </section>
 
       <section className="grid grid-cols-2 gap-5">
-        <div className="rounded-2xl border border-white/[0.07] bg-[#0d0f12] p-6">
+        <div className="rounded-2xl border border-white/[0.07] bg-[#0d0f12] p-5">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-bold text-zinc-100">Vuruş bölgesi analizi</p>
@@ -216,9 +296,10 @@ export default function AnalyticsPage() {
             </div>
             <Crosshair className="size-4 text-red-500" />
           </div>
-          <div className="mt-4 h-[250px]">
+          <div className="mt-2 h-[205px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={targetData} layout="vertical" margin={{ left: 10 }}>
+              <BarChart data={targetData} layout="vertical" margin={{ left: 4, right: 18 }}>
+                <defs><linearGradient id="targetBar" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#7f1d1d"/><stop offset="55%" stopColor="#dc2626"/><stop offset="100%" stopColor="#fb7185"/></linearGradient></defs>
                 <CartesianGrid
                   stroke="rgba(255,255,255,.05)"
                   horizontal={false}
@@ -240,9 +321,9 @@ export default function AnalyticsPage() {
                   width={48}
                 />
                 <Tooltip contentStyle={chartTooltipStyle} cursor={false} />
-                <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={18}>
+                <Bar dataKey="value" fill="url(#targetBar)" radius={0} barSize={15}>
                   {targetData.map((entry) => (
-                    <Cell key={entry.name} fill={entry.color} />
+                    <Cell key={entry.name} fill={entry.name === "Kafa" ? "url(#targetBar)" : entry.color} />
                   ))}
                 </Bar>
               </BarChart>
@@ -250,7 +331,7 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-white/[0.07] bg-[#0d0f12] p-6">
+        <div className="rounded-2xl border border-white/[0.07] bg-[#0d0f12] p-5">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-bold text-zinc-100">Bitiricilik oranları</p>
@@ -259,17 +340,19 @@ export default function AnalyticsPage() {
             <Gauge className="size-4 text-violet-400" />
           </div>
           <div className="mt-3 grid grid-cols-[1.2fr_0.8fr] items-center">
-            <div className="h-[250px]">
+            <div className="h-[205px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={finishData}
                     dataKey="value"
                     nameKey="name"
-                    innerRadius={62}
-                    outerRadius={90}
-                    paddingAngle={3}
-                    stroke="none"
+                    innerRadius={50}
+                    outerRadius={76}
+                    paddingAngle={5}
+                    cornerRadius={0}
+                    stroke="#0d0f12"
+                    strokeWidth={3}
                   >
                     {finishData.map((entry) => (
                       <Cell key={entry.name} fill={entry.color} />
@@ -299,7 +382,7 @@ export default function AnalyticsPage() {
         </div>
       </section>
 
-      <section className="border border-white/[0.07] bg-[#0d0f12] p-6">
+      <section className="border border-white/[0.07] bg-[#0d0f12] p-5">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-bold text-zinc-100">Son maçlar ve güncel form</p>
@@ -314,7 +397,7 @@ export default function AnalyticsPage() {
             {recentFights.map((fight, index) => (
               <article
                 key={fight.id}
-                className={`border border-white/[0.07] border-l-2 p-4 ${
+                className={`border border-white/[0.07] border-l-2 p-3 ${
                   fight.result === "W"
                     ? "border-l-emerald-500"
                     : fight.result === "L"
@@ -368,7 +451,7 @@ export default function AnalyticsPage() {
         )}
       </section>
 
-      <section className="rounded-2xl border border-white/[0.07] bg-[#0d0f12] p-6">
+      <section className="rounded-2xl border border-white/[0.07] bg-[#0d0f12] p-5">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-bold text-zinc-100">Kardiyo tempo projeksiyonu</p>
@@ -378,9 +461,10 @@ export default function AnalyticsPage() {
           </div>
           <HeartPulse className="size-4 text-red-500" />
         </div>
-        <div className="mt-4 h-[270px]">
+        <div className="mt-2 h-[220px]">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={cardioData} margin={{ left: -20, right: 15 }}>
+            <LineChart data={cardioData} margin={{ left: -20, right: 15, top: 10 }}>
+              <defs><linearGradient id="cardioLine" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor="#fb7185"/><stop offset="100%" stopColor="#dc2626"/></linearGradient><linearGradient id="cardioArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ef4444" stopOpacity={0.3}/><stop offset="100%" stopColor="#ef4444" stopOpacity={0}/></linearGradient></defs>
               <CartesianGrid stroke="rgba(255,255,255,.05)" vertical={false} />
               <XAxis
                 dataKey="round"
@@ -394,11 +478,12 @@ export default function AnalyticsPage() {
                 tick={{ fill: "#52525b", fontSize: 9 }}
               />
               <Tooltip contentStyle={chartTooltipStyle} />
+              <Area type="monotone" dataKey="strikes" stroke="none" fill="url(#cardioArea)" />
               <Line
                 type="monotone"
                 dataKey="strikes"
                 name="İsabetli vuruş"
-                stroke="#ef4444"
+                stroke="url(#cardioLine)"
                 strokeWidth={3}
                 dot={{ r: 4, fill: "#ef4444", stroke: "#0d0f12", strokeWidth: 3 }}
                 activeDot={{ r: 6 }}

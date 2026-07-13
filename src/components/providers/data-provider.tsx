@@ -49,6 +49,7 @@ export interface Fighter {
   champion_order: number | null;
   image_url: string | null;
   image_path: string | null;
+  source_url: string;
 }
 
 export interface UfcEvent {
@@ -76,6 +77,10 @@ export interface Fight {
   weight_class: string;
   card_type: string;
   bout_order: number;
+  result: "W" | "L" | "D" | "NC" | null;
+  method: string | null;
+  round: number | null;
+  fight_time: string | null;
 }
 
 export interface FightHistory {
@@ -125,9 +130,19 @@ interface DataState {
   syncProgress: SyncProgress | null;
   syncError: string | null;
   syncReport: SyncReport | null;
-  refresh: () => Promise<void>;
+  refresh: (options?: { silent?: boolean }) => Promise<void>;
   setOnlineMode: (enabled: boolean) => Promise<void>;
   syncNow: () => Promise<void>;
+}
+
+function withTimeout<T>(promise: Promise<T>, milliseconds: number, message: string) {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), milliseconds);
+    promise.then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      (error) => { window.clearTimeout(timer); reject(error); },
+    );
+  });
 }
 
 const UfcDataContext = createContext<DataState | null>(null);
@@ -145,7 +160,7 @@ const fighterQuery = `
     CASE WHEN c.fighter_id IS NULL THEN 0 ELSE 1 END AS is_champion,
     c.weight_class AS champion_title,
     c.display_order AS champion_order,
-    f.image_url, f.image_path
+    f.image_url, f.image_path, f.source_url
   FROM fighters f
   JOIN fighter_stats fs ON fs.fighter_id = f.id
   LEFT JOIN champions c ON c.fighter_id = f.id
@@ -158,9 +173,8 @@ const eventQuery = `
          e.source_url, COUNT(f.id) AS fight_count
   FROM events e
   LEFT JOIN fights f ON f.event_id = e.id
-  WHERE e.status = 'upcoming'
   GROUP BY e.id
-  ORDER BY e.date ASC
+  ORDER BY e.date DESC
 `;
 
 const fightQuery = `
@@ -168,7 +182,8 @@ const fightQuery = `
          a.name AS fighter1_name, b.name AS fighter2_name,
          a.image_url AS fighter1_image_url, a.image_path AS fighter1_image_path,
          b.image_url AS fighter2_image_url, b.image_path AS fighter2_image_path,
-         f.weight_class, f.card_type, f.bout_order
+         f.weight_class, f.card_type, f.bout_order,
+         f.result, f.method, f.round, f.fight_time
   FROM fights f
   JOIN fighters a ON a.id = f.fighter1_id
   JOIN fighters b ON b.id = f.fighter2_id
@@ -199,15 +214,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncReport, setSyncReport] = useState<SyncReport | null>(null);
   const autoSyncChecked = useRef(false);
+  const syncLock = useRef(false);
+  const modeChangeLock = useRef(false);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true);
     setError(null);
 
     try {
+      try {
+        await invoke<number>("repair_cached_fighter_images");
+      } catch {
+        // Web-only development has no Tauri command bridge.
+      }
       const database = await getDatabase();
       const [fighterRows, eventRows, fightRows, historyRows, metadataRows] =
-        await Promise.all([
+        await withTimeout(Promise.all([
           database.select<Fighter[]>(fighterQuery),
           database.select<UfcEvent[]>(eventQuery),
           database.select<Fight[]>(fightQuery),
@@ -215,7 +237,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           database.select<Array<{ key: string; value: string }>>(
             "SELECT key, value FROM app_metadata",
           ),
-        ]);
+        ]), 20_000, "Yerel veritabanı 20 saniye içinde yanıt vermedi.");
 
       setFighters(fighterRows);
       setEvents(eventRows);
@@ -229,13 +251,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     } catch (cause) {
       const message =
         cause instanceof Error ? cause.message : "Yerel veri okunamadı.";
-      setError(message);
+      if (options?.silent) setSyncError(message);
+      else setError(message);
     } finally {
-      setLoading(false);
+      if (!options?.silent) setLoading(false);
     }
   }, []);
 
   const syncNow = useCallback(async () => {
+    if (syncLock.current) return;
+    syncLock.current = true;
     setSyncing(true);
     setSyncError(null);
     setSyncReport(null);
@@ -247,9 +272,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     });
 
     try {
-      const report = await invoke<SyncReport>("sync_online_data");
+      const report = await withTimeout(
+        invoke<SyncReport>("sync_online_data"),
+        180_000,
+        "UFC güncellemesi 3 dakika içinde tamamlanamadı. Yerel veriler korunuyor; yeniden deneyebilirsiniz.",
+      );
       setSyncReport(report);
-      await refresh();
+      await refresh({ silent: true });
     } catch (cause) {
       const message =
         typeof cause === "string"
@@ -259,6 +288,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
             : "Online güncelleme tamamlanamadı.";
       setSyncError(message);
     } finally {
+      syncLock.current = false;
       setSyncing(false);
       setSyncProgress(null);
     }
@@ -266,29 +296,44 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const setOnlineMode = useCallback(
     async (enabled: boolean) => {
+      if (modeChangeLock.current || syncLock.current) return;
+      modeChangeLock.current = true;
       setOnlineModeState(enabled);
       setSyncError(null);
       autoSyncChecked.current = true;
-      const database = await getDatabase();
-      await database.execute(
-        `
-          INSERT INTO app_metadata(key, value, updated_at)
-          VALUES ('online_mode_enabled', $1, CURRENT_TIMESTAMP)
-          ON CONFLICT(key) DO UPDATE SET
-            value = excluded.value,
-            updated_at = CURRENT_TIMESTAMP
-        `,
-        [enabled ? "1" : "0"],
-      );
+      try {
+        const database = await getDatabase();
+        await database.execute(
+          `
+            INSERT INTO app_metadata(key, value, updated_at)
+            VALUES ('online_mode_enabled', $1, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+              value = excluded.value,
+              updated_at = CURRENT_TIMESTAMP
+          `,
+          [enabled ? "1" : "0"],
+        );
 
-      if (enabled) {
-        await syncNow();
-      } else {
-        setMetadata((current) => ({
-          ...current,
-          online_mode_enabled: "0",
-          dataset_mode: "offline cache",
-        }));
+        if (enabled) {
+          await syncNow();
+        } else {
+          setMetadata((current) => ({
+            ...current,
+            online_mode_enabled: "0",
+            dataset_mode: "offline cache",
+          }));
+        }
+      } catch (cause) {
+        setOnlineModeState(!enabled);
+        const message =
+          cause instanceof Error
+            ? cause.message
+            : typeof cause === "string"
+              ? cause
+              : "Online Mod durumu kaydedilemedi.";
+        setSyncError(message);
+      } finally {
+        modeChangeLock.current = false;
       }
     },
     [syncNow],
@@ -337,6 +382,31 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }, 250);
     return () => window.clearTimeout(timer);
   }, [loading, metadata.last_online_sync, onlineMode, syncing, syncNow]);
+
+  useEffect(() => {
+    if (!onlineMode || syncing) return;
+    let active = true;
+    const pollResults = async () => {
+      try {
+        const updated = await invoke<number>("sync_live_event_results");
+        if (active && updated > 0) await refresh({ silent: true });
+      } catch {
+        // Full sync status remains authoritative; transient live polling is silent.
+      }
+    };
+    void pollResults();
+    const timer = window.setInterval(() => void pollResults(), 60_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [onlineMode, refresh, syncing]);
+
+  useEffect(() => {
+    if (!syncReport) return;
+    const timer = window.setTimeout(() => setSyncReport(null), 5_300);
+    return () => window.clearTimeout(timer);
+  }, [syncReport]);
 
   const value = useMemo(
     () => ({

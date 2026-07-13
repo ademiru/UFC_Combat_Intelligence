@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import Link from "next/link";
 
 import {
   type FightHistory,
@@ -54,6 +55,7 @@ export default function FightersPage() {
   const [weightClass, setWeightClass] = useState("all");
   const [style, setStyle] = useState("all");
   const [minStreak, setMinStreak] = useState("0");
+  const [tacticalFilter, setTacticalFilter] = useState<"all" | "ko3" | "td80" | "fast">("all");
 
   const weightClasses = useMemo(
     () => [...new Set(fighters.map((fighter) => fighter.weight_class))],
@@ -77,10 +79,14 @@ export default function FightersPage() {
         matchesSearch &&
         (weightClass === "all" || fighter.weight_class === weightClass) &&
         (style === "all" || fighter.style === style) &&
-        fighter.win_streak >= Number(minStreak)
+        fighter.win_streak >= Number(minStreak) &&
+        (tacticalFilter === "all" ||
+          (tacticalFilter === "td80" && fighter.td_def >= 0.8) ||
+          (tacticalFilter === "ko3" && fightHistory.filter((fight) => fight.fighter_id === fighter.id).slice(0, 3).length === 3 && fightHistory.filter((fight) => fight.fighter_id === fighter.id).slice(0, 3).every((fight) => fight.result === "W" && /KO|TKO/i.test(fight.method))) ||
+          (tacticalFilter === "fast" && fightHistory.filter((fight) => fight.fighter_id === fighter.id).length > 0 && fightHistory.filter((fight) => fight.fighter_id === fighter.id).every((fight) => fight.round === 1)))
       );
     });
-  }, [fighters, minStreak, search, style, weightClass]);
+  }, [fighters, fightHistory, minStreak, search, style, tacticalFilter, weightClass]);
 
   if (loading || error) {
     return (
@@ -89,13 +95,14 @@ export default function FightersPage() {
   }
 
   const hasFilters =
-    search || weightClass !== "all" || style !== "all" || minStreak !== "0";
+    search || weightClass !== "all" || style !== "all" || minStreak !== "0" || tacticalFilter !== "all";
 
   function clearFilters() {
     setSearch("");
     setWeightClass("all");
     setStyle("all");
     setMinStreak("0");
+    setTacticalFilter("all");
   }
 
   return (
@@ -121,6 +128,15 @@ export default function FightersPage() {
       </section>
 
       <section className="rounded-2xl border border-white/[0.07] bg-[#0d0f12] p-5">
+        <div className="mb-4 flex items-center gap-2 border-b border-white/[0.05] pb-4">
+          <span className="mr-2 text-[9px] font-bold tracking-[0.14em] text-red-500 uppercase">Taktiksel Filtreler</span>
+          {[
+            ["all", "Tüm Kadro"],
+            ["ko3", "Son 3: KO/TKO"],
+            ["td80", "TD Savunma ≥ %80"],
+            ["fast", "Ortalama < 1 Round"],
+          ].map(([value, label]) => <button key={value} type="button" onClick={() => setTacticalFilter(value as typeof tacticalFilter)} className={`border px-3 py-2 text-[9px] font-bold transition ${tacticalFilter === value ? "border-red-500/35 bg-red-500/10 text-red-400" : "border-white/[0.07] text-zinc-600 hover:text-zinc-300"}`}>{label}</button>)}
+        </div>
         <div className="grid grid-cols-[1.5fr_1fr_0.8fr_0.65fr_auto] gap-3">
           <label className="relative">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-600" />
@@ -202,7 +218,8 @@ export default function FightersPage() {
         </div>
         <div className="max-h-[620px] divide-y divide-white/[0.045] overflow-y-auto">
           {filteredFighters.map((fighter) => (
-            <article
+            <Link
+              href={`/analytics?fighter=${fighter.id}`}
               key={fighter.id}
               className="grid grid-cols-[1.7fr_1fr_0.75fr_0.85fr_0.65fr_0.65fr_0.65fr] items-center gap-4 px-6 py-4 transition-colors hover:bg-white/[0.018]"
             >
@@ -272,7 +289,7 @@ export default function FightersPage() {
                 </p>
                 <p className="mt-1 text-[9px] text-zinc-600">{fighter.stance}</p>
               </div>
-            </article>
+            </Link>
           ))}
           {filteredFighters.length === 0 ? (
             <div className="py-20 text-center">

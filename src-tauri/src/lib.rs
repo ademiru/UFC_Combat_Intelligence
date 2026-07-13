@@ -1,4 +1,5 @@
 mod sync;
+mod videos;
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -34,13 +35,31 @@ fn database_migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/0005_fight_history.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 6,
+            description: "add_live_event_result_fields",
+            sql: include_str!("../migrations/0006_live_event_results.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 7,
+            description: "add_official_fighter_video_catalog",
+            sql: include_str!("../migrations/0007_fighter_videos.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![sync::sync_online_data])
+        .invoke_handler(tauri::generate_handler![
+            sync::sync_online_data,
+            sync::repair_cached_fighter_images,
+            sync::sync_live_event_results,
+            videos::sync_fighter_videos,
+            videos::resolve_fighter_video
+        ])
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(

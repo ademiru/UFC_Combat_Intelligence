@@ -2,7 +2,7 @@
   "name": "ufc-panel",
   "version": "0.1.0",
   "private": true,
-  "description": "Local-first UFC analytics desktop application",
+  "description": "Combat Intelligence UFC analytics desktop application",
   "packageManager": "pnpm@11.8.0",
   "scripts": {
     "dev": "next dev",
@@ -20,6 +20,7 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "hls.js": "^1.6.16",
     "lucide-react": "^1.21.0",
     "next": "^16.2.9",
     "react": "^19.2.7",

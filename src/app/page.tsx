@@ -12,6 +12,7 @@ import {
   RefreshCw,
   MapPin,
   Swords,
+  Trophy,
   UsersRound,
   Wifi,
   WifiOff,
@@ -19,6 +20,7 @@ import {
 import { useState } from "react";
 
 import { useUfcData } from "@/components/providers/data-provider";
+import { CommandCenter } from "@/components/features/command-center";
 import { DataState } from "@/components/shared/data-state";
 import { FighterAvatar } from "@/components/shared/fighter-avatar";
 import { cn } from "@/lib/utils";
@@ -67,6 +69,12 @@ export default function DashboardPage() {
 
   const activeEvent =
     events.find((event) => event.id === selectedEventId) ?? events[0];
+  const today = new Date().toISOString().slice(0, 10);
+  const latestCompletedEvent =
+    events.find((event) => event.date < today) ?? events[0];
+  const nextEvent = [...events]
+    .filter((event) => event.date >= today)
+    .sort((a, b) => a.date.localeCompare(b.date))[0];
   const activeFights = fights.filter(
     (fight) => fight.event_id === activeEvent?.id,
   );
@@ -77,19 +85,22 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <section className="flex items-end justify-between">
-        <div>
-          <div className="flex items-center gap-2 text-[10px] font-bold tracking-[0.18em] text-red-500 uppercase">
-            <Database className="size-3" />
-            {onlineMode ? "Güncel UFC Verisi" : "Yerel Veri Arşivi"}
+        <div className="flex items-stretch gap-4">
+          <span className="w-1 shrink-0 bg-gradient-to-b from-red-500 to-red-700 shadow-[0_0_14px_rgba(225,20,20,0.6)]" />
+          <div>
+            <div className="flex items-center gap-2 text-[10px] font-bold tracking-[0.2em] text-red-500 uppercase">
+              <Database className="size-3" />
+              {onlineMode ? "Güncel UFC Verisi" : "Yerel Veri Arşivi"}
+            </div>
+            <h2 className="mt-2 text-4xl font-bold tracking-[0.01em] text-white">
+              Fight Center
+            </h2>
+            <p className="mt-2 text-sm text-zinc-500">
+              Yaklaşan kartlar, eşleşmeler ve güncel sıklet şampiyonları.
+            </p>
           </div>
-          <h2 className="mt-3 text-3xl font-black tracking-[-0.045em] text-white">
-            Fight Center
-          </h2>
-          <p className="mt-2 text-sm text-zinc-500">
-            Yaklaşan kartlar, eşleşmeler ve güncel sıklet şampiyonları.
-          </p>
         </div>
-        <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] px-4 py-3 text-right">
+        <div className="clip-corner-sm border border-white/[0.07] bg-white/[0.025] px-4 py-3 text-right">
           <p className="text-[9px] font-bold tracking-[0.15em] text-zinc-600 uppercase">
             Veri anlık görüntüsü
           </p>
@@ -100,6 +111,8 @@ export default function DashboardPage() {
           </p>
         </div>
       </section>
+
+      <CommandCenter event={latestCompletedEvent} nextEvent={nextEvent} fights={fights} />
 
       <section
         className={cn(
@@ -212,13 +225,16 @@ export default function DashboardPage() {
           return (
             <div
               key={item.label}
-              className="rounded-2xl border border-white/[0.07] bg-[#0d0f12] p-5"
+              className="group relative overflow-hidden border border-white/[0.07] bg-[#0d0f12] p-5 transition-colors hover:border-white/15"
             >
+              <span className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-red-600/70 to-transparent" />
               <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-zinc-500">{item.label}</p>
+                <p className="text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">
+                  {item.label}
+                </p>
                 <Icon className={cn("size-4", item.accent)} />
               </div>
-              <p className="mt-3 text-3xl font-black tracking-tight text-white">
+              <p className="font-display mt-3 text-5xl leading-none font-bold tracking-tight text-white tabular-nums">
                 {item.value}
               </p>
             </div>
@@ -271,7 +287,17 @@ export default function DashboardPage() {
                         <Clock3 className="size-3" />
                         {formatDate(event.date)} · {event.start_time}
                       </span>
+                      <span className={`mt-2 inline-block border px-2 py-1 text-[8px] font-black tracking-wider uppercase ${event.date < new Date().toISOString().slice(0, 10) ? "border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-400" : "border-blue-500/20 bg-blue-500/[0.06] text-blue-400"}`}>
+                        {event.date < new Date().toISOString().slice(0, 10) ? "Tamamlandı" : "Yaklaşan"}
+                      </span>
                     </span>
+                    {fights.some(
+                      (fight) => fight.event_id === event.id && fight.result,
+                    ) ? (
+                      <span className="shrink-0 border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[8px] font-bold tracking-wider text-emerald-400 uppercase">
+                        Sonuçlandı
+                      </span>
+                    ) : null}
                     <ChevronRight
                       className={cn(
                         "size-4",
@@ -286,7 +312,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="overflow-hidden rounded-2xl border border-white/[0.07] bg-[#0d0f12]">
-          <div className="relative border-b border-white/[0.06] bg-[radial-gradient(circle_at_90%_0%,rgba(210,10,10,0.15),transparent_40%)] p-6">
+          <div className="relative border-b border-red-500/15 bg-[linear-gradient(135deg,rgba(210,10,10,.05)_0_18%,transparent_18%)] p-6">
             <div className="flex items-start justify-between gap-6">
               <div>
                 <p className="text-[10px] font-bold tracking-[0.18em] text-red-500 uppercase">
@@ -300,57 +326,153 @@ export default function DashboardPage() {
                   {activeEvent?.location}
                 </p>
               </div>
-              <span className="rounded-full border border-red-500/15 bg-red-500/[0.06] px-3 py-1.5 text-[9px] font-bold tracking-widest text-red-400 uppercase">
-                Main Card
-              </span>
+              {(() => {
+                const decided = activeFights.filter((fight) => fight.result).length;
+                return decided > 0 ? (
+                  <span className="flex shrink-0 items-center gap-1.5 border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-[9px] font-bold tracking-widest text-emerald-400 uppercase">
+                    <BadgeCheck className="size-3" />
+                    Sonuçlandı · {decided}/{activeFights.length}
+                  </span>
+                ) : (
+                  <span className="shrink-0 border border-red-500/15 bg-red-500/[0.06] px-3 py-1.5 text-[9px] font-bold tracking-widest text-red-400 uppercase">
+                    Main Card
+                  </span>
+                );
+              })()}
             </div>
           </div>
-          <div className="divide-y divide-white/[0.05] px-6">
-            {activeFights.map((fight, index) => (
-              <div
-                key={fight.id}
-                className="grid grid-cols-[1fr_auto_1fr] items-center gap-5 py-5"
-              >
-                <div className="flex items-center justify-end gap-3 text-right">
-                  <div>
-                    <p className="text-sm font-bold text-zinc-100">
-                      {fight.fighter1_name}
-                    </p>
-                    <p className="mt-1 text-[10px] text-zinc-600">
-                      {fighters.find((item) => item.id === fight.fighter1_id)?.country}
-                    </p>
+          <div className="space-y-5 px-5 py-4">
+            {["Main Card", "Prelims", "Early Prelims"].map((cardType) => {
+              const cardFights = activeFights.filter((fight) => fight.card_type === cardType);
+              if (cardFights.length === 0) return null;
+              return (
+                <section key={cardType}>
+                  <div className="mb-1 flex items-center justify-between border-b border-white/[0.08] pb-2">
+                    <h4 className="text-[10px] font-black tracking-[0.16em] text-zinc-200 uppercase">{cardType}</h4>
+                    <span className="text-[8px] font-bold tracking-wider text-zinc-700 uppercase">{cardFights.length} Maç</span>
                   </div>
-                  <FighterAvatar
-                    name={fight.fighter1_name}
-                    imageUrl={fight.fighter1_image_url}
-                    imagePath={fight.fighter1_image_path}
-                  />
-                </div>
+                  <div className="divide-y divide-white/[0.05]">
+            {cardFights.map((fight, index) => {
+              const f1Won = fight.result === "W";
+              const f2Won = fight.result === "L";
+              const decided = f1Won || f2Won;
+              const outcome = fight.result
+                ? [
+                    fight.method,
+                    fight.round ? `R${fight.round}` : null,
+                    fight.fight_time,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+                : null;
+              return (
+                <div
+                  key={fight.id}
+                  className="grid grid-cols-[1fr_auto_1fr] items-center gap-5 py-5"
+                >
+                  <div className="flex items-center justify-end gap-3 text-right">
+                    <div className="min-w-0">
+                      <p
+                        className={cn(
+                          "flex items-center justify-end gap-1.5 text-sm font-bold",
+                          f1Won
+                            ? "text-emerald-400"
+                            : decided
+                              ? "text-zinc-500"
+                              : "text-zinc-100",
+                        )}
+                      >
+                        {f1Won && (
+                          <Trophy className="size-3 shrink-0 text-emerald-400" />
+                        )}
+                        <span className="truncate">{fight.fighter1_name}</span>
+                      </p>
+                      <p className="mt-1 truncate text-[10px] text-zinc-600">
+                        {fighters.find((item) => item.id === fight.fighter1_id)?.country}
+                      </p>
+                    </div>
+                    <FighterAvatar
+                      name={fight.fighter1_name}
+                      imageUrl={fight.fighter1_image_url}
+                      imagePath={fight.fighter1_image_path}
+                      className={cn(
+                        f1Won && "ring-2 ring-emerald-500/70",
+                        decided && !f1Won && "opacity-40 grayscale",
+                      )}
+                    />
+                  </div>
                 <div className="text-center">
-                  <span className="mx-auto grid size-8 place-items-center rounded-full border border-white/[0.07] bg-white/[0.025]">
-                    <Swords className="size-3.5 text-red-500" />
-                  </span>
-                  <p className="mt-1.5 text-[8px] font-black tracking-widest text-zinc-700 uppercase">
-                    {index === 0 ? "Main" : `Bout ${index + 1}`}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <FighterAvatar
-                    name={fight.fighter2_name}
-                    imageUrl={fight.fighter2_image_url}
-                    imagePath={fight.fighter2_image_path}
-                  />
-                  <div>
-                    <p className="text-sm font-bold text-zinc-100">
-                      {fight.fighter2_name}
-                    </p>
-                    <p className="mt-1 text-[10px] text-zinc-600">
-                      {fighters.find((item) => item.id === fight.fighter2_id)?.country}
-                    </p>
+                    {fight.result ? (
+                      <>
+                        <span
+                          className={cn(
+                            "mx-auto grid h-6 min-w-[3.5rem] place-items-center px-2 text-[9px] font-black tracking-wider uppercase",
+                            decided
+                              ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                              : "border border-zinc-500/30 bg-zinc-500/10 text-zinc-400",
+                          )}
+                        >
+                          {fight.result === "NC"
+                            ? "NC"
+                            : fight.result === "D"
+                              ? "Berabere"
+                              : "Galip"}
+                        </span>
+                        {outcome && (
+                          <p className="mt-1.5 text-[8px] font-bold tracking-wider text-zinc-500 uppercase">
+                            {outcome}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span className="mx-auto grid size-8 place-items-center rounded-full border border-white/[0.07] bg-white/[0.025]">
+                          <Swords className="size-3.5 text-red-500" />
+                        </span>
+                        <p className="mt-1.5 text-[8px] font-black tracking-widest text-zinc-700 uppercase">
+                          {cardType === "Main Card" && index === 0 ? "Main Event" : `Bout ${index + 1}`}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <FighterAvatar
+                      name={fight.fighter2_name}
+                      imageUrl={fight.fighter2_image_url}
+                      imagePath={fight.fighter2_image_path}
+                      className={cn(
+                        f2Won && "ring-2 ring-emerald-500/70",
+                        decided && !f2Won && "opacity-40 grayscale",
+                      )}
+                    />
+                    <div className="min-w-0">
+                      <p
+                        className={cn(
+                          "flex items-center gap-1.5 text-sm font-bold",
+                          f2Won
+                            ? "text-emerald-400"
+                            : decided
+                              ? "text-zinc-500"
+                              : "text-zinc-100",
+                        )}
+                      >
+                        {f2Won && (
+                          <Trophy className="size-3 shrink-0 text-emerald-400" />
+                        )}
+                        <span className="truncate">{fight.fighter2_name}</span>
+                      </p>
+                      <p className="mt-1 truncate text-[10px] text-zinc-600">
+                        {fighters.find((item) => item.id === fight.fighter2_id)?.country}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -371,7 +493,7 @@ export default function DashboardPage() {
           {champions.map((champion) => (
             <div
               key={champion.id}
-              className="rounded-xl border border-white/[0.05] bg-white/[0.018] p-4"
+              className="clip-corner group relative border border-amber-500/15 bg-gradient-to-b from-amber-500/[0.06] to-transparent p-4 transition-colors hover:border-amber-500/35"
             >
               <FighterAvatar
                 name={champion.name}
@@ -380,13 +502,13 @@ export default function DashboardPage() {
                 imagePath={champion.image_path}
                 className="size-12"
               />
-              <p className="mt-3 truncate text-xs font-bold text-zinc-200">
+              <p className="font-display mt-3 truncate text-sm font-bold tracking-wide text-zinc-100 uppercase">
                 {champion.name}
               </p>
-              <p className="mt-1 truncate text-[9px] font-bold tracking-wider text-amber-500/70 uppercase">
+              <p className="mt-1 truncate text-[9px] font-bold tracking-wider text-amber-500/80 uppercase">
                 {champion.champion_title}
               </p>
-              <p className="mt-2 text-[10px] text-zinc-600">
+              <p className="mt-2 font-tabular text-[10px] text-zinc-500">
                 {champion.wins}-{champion.losses}-{champion.draws}
               </p>
             </div>

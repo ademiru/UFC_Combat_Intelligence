@@ -14,6 +14,8 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
   --font-sans: var(--font-sans-app);
+  --font-mono: var(--font-mono-app);
+  --font-display: var(--font-display-app);
   --radius-sm: 0;
   --radius-md: 0;
   --radius-lg: 0;
@@ -23,24 +25,41 @@
 :root {
   color-scheme: dark;
   --radius: 0;
-  --background: #050607;
-  --foreground: #e7e9ec;
-  --card: #090b0d;
+  --background: #060708;
+  --foreground: #e9ebef;
+  --card: #0b0d10;
   --card-foreground: #f4f4f5;
-  --primary: #d20a0a;
+  --primary: #e11414;
   --primary-foreground: #ffffff;
-  --muted: #18181b;
-  --muted-foreground: #71717a;
-  --border: rgba(161, 167, 179, 0.14);
-  --font-sans-app: "Cascadia Mono", "JetBrains Mono", "SFMono-Regular", Consolas,
+  --muted: #16171b;
+  --muted-foreground: #7a7d85;
+  --border: rgba(168, 174, 187, 0.12);
+
+  /* Athletic condensed display — Bahnschrift ships with Windows; graceful fallbacks. */
+  --font-display-app: "Bahnschrift", "Oswald", "Archivo Narrow", "Impact",
+    "Haettenschweiler", sans-serif;
+  --font-sans-app: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui,
+    -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono-app: "Cascadia Mono", "JetBrains Mono", "SFMono-Regular", Consolas,
     "Liberation Mono", monospace;
+
+  --edge: rgba(255, 255, 255, 0.06);
+  --edge-strong: rgba(255, 255, 255, 0.1);
 }
 
-* {
-  border-color: var(--border);
+/* Default border color as a base-layer rule so Tailwind's colored border
+   utilities (border-red-500, border-amber-500, …) can still win. */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
 }
 
-/* Terminal UI: no component is allowed to reintroduce soft corners. */
+html {
+  background: var(--background);
+}
+
+/* Brutalist surface language: every control and panel keeps a hard edge. */
 button,
 input,
 select,
@@ -49,23 +68,38 @@ textarea,
   border-radius: 0 !important;
 }
 
-html {
-  background: var(--background);
-}
-
 body {
+  position: relative;
   min-height: 100vh;
   margin: 0;
   background:
-    linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(210, 10, 10, 0.025), transparent 24%),
-    var(--background);
-  background-size: 24px 24px, 24px 24px, 100% 100%, auto;
+    linear-gradient(180deg, rgba(225, 20, 20, 0.05), transparent 170px),
+    linear-gradient(rgba(255, 255, 255, 0.016) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.016) 1px, transparent 1px),
+    #07080a;
+  background-size:
+    100% 100%,
+    32px 32px,
+    32px 32px,
+    auto;
+  background-attachment: fixed;
   color: var(--foreground);
   font-family: var(--font-sans-app);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Flat technical construction lines; no ambient glow or soft blobs. */
+body::before {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background:
+    linear-gradient(90deg, transparent 18%, rgba(225,20,20,.025) 48%, transparent 78%),
+    linear-gradient(128deg, transparent 0 72%, rgba(225,20,20,.045) 72% 72.15%, transparent 72.15%),
+    linear-gradient(52deg, transparent 0 86%, rgba(255,255,255,.025) 86% 86.12%, transparent 86.12%);
 }
 
 body::after {
@@ -74,13 +108,7 @@ body::after {
   inset: 0;
   pointer-events: none;
   content: "";
-  background: repeating-linear-gradient(
-    0deg,
-    transparent 0,
-    transparent 3px,
-    rgba(255, 255, 255, 0.012) 3px,
-    rgba(255, 255, 255, 0.012) 4px
-  );
+  background: linear-gradient(90deg, rgba(0,0,0,.12), transparent 18%, transparent 82%, rgba(0,0,0,.16));
 }
 
 button,
@@ -90,14 +118,174 @@ textarea {
   font: inherit;
 }
 
-main h2 {
-  text-transform: uppercase;
-  letter-spacing: -0.045em;
+/* Broadcast-grade headings: condensed, athletic, uppercase. */
+main h1,
+main h2,
+main h3,
+.font-display {
+  font-family: var(--font-display-app);
+  font-weight: 700;
 }
 
-main section,
-main [class*="border-white"] {
-  box-shadow: none !important;
+main h1,
+main h2 {
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+
+.font-tabular {
+  font-family: var(--font-mono-app);
+}
+
+/* Angular fight-poster cut corner. */
+.clip-corner {
+  clip-path: polygon(
+    14px 0,
+    100% 0,
+    100% calc(100% - 14px),
+    calc(100% - 14px) 100%,
+    0 100%,
+    0 14px
+  );
+}
+
+.clip-corner-sm {
+  clip-path: polygon(
+    9px 0,
+    100% 0,
+    100% calc(100% - 9px),
+    calc(100% - 9px) 100%,
+    0 100%,
+    0 9px
+  );
+}
+
+/* Diagonal hazard stripe for accent bars. */
+.stripe-red {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(225, 20, 20, 0.9) 0,
+    rgba(225, 20, 20, 0.9) 10px,
+    rgba(120, 8, 8, 0.9) 10px,
+    rgba(120, 8, 8, 0.9) 20px
+  );
+}
+
+/* ---------------------------------------------------------------------------
+   Professional surface system
+   Unifies every panel and form field so the whole UI reads as one product:
+   raised cards are lit from the top with a soft ambient shadow, form fields
+   are recessed, and borders share a single value. Targets the app's dark
+   surface tokens by their hex so no component markup has to change.
+   --------------------------------------------------------------------------- */
+
+/* Raised panels — top-lit sheen + ambient elevation. */
+main [class*="0d0f12"],
+main [class*="090b0d"],
+main [class*="0b0d10"] {
+  border-radius: 0;
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.032),
+    rgba(255, 255, 255, 0) 42%
+  );
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+    0 0 18px -14px rgba(225, 20, 20, 0.52),
+    4px 4px 0 rgba(0, 0, 0, 0.22);
+  transition:
+    box-shadow 0.25s ease,
+    border-color 0.25s ease,
+    background-color 0.25s ease;
+}
+
+/* Compact translucent cards also belong to the panel family. Keep their glow
+   close to the edge so dense tables and grids do not turn into a red haze. */
+main [class*="bg-white/"][class*="border-white/"],
+main [class*="bg-black/"][class*="border-white/"] {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 0 16px -14px rgba(225, 20, 20, 0.48),
+    3px 3px 0 rgba(0, 0, 0, 0.18);
+  transition:
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
+}
+
+main [class*="bg-white/"][class*="border-white/"]:hover,
+main [class*="bg-black/"][class*="border-white/"]:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 0 0 1px rgba(225, 20, 20, 0.1),
+    0 0 22px -15px rgba(239, 68, 68, 0.68),
+    4px 4px 0 rgba(0, 0, 0, 0.24);
+}
+
+/* Accent panels keep their semantic colour instead of receiving a generic
+   neon wash. The glow is deliberately narrow and only reinforces the edge. */
+main [class*="border-red-"] {
+  --panel-accent-glow: rgba(239, 68, 68, 0.58);
+}
+
+main [class*="border-emerald-"] {
+  --panel-accent-glow: rgba(16, 185, 129, 0.42);
+}
+
+main [class*="border-blue-"] {
+  --panel-accent-glow: rgba(59, 130, 246, 0.38);
+}
+
+main [class*="border-amber-"] {
+  --panel-accent-glow: rgba(245, 158, 11, 0.4);
+}
+
+main [class*="border-red-"][class*="bg-"],
+main [class*="border-emerald-"][class*="bg-"],
+main [class*="border-blue-"][class*="bg-"],
+main [class*="border-amber-"][class*="bg-"] {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 0 20px -15px var(--panel-accent-glow),
+    4px 4px 0 rgba(0, 0, 0, 0.2);
+}
+
+/* Stable hover: an edge ring + deeper shadow warm the card WITHOUT moving it
+   (no transform, no border-width change → zero layout shift). */
+main [class*="0d0f12"]:hover,
+main [class*="090b0d"]:hover,
+main [class*="0b0d10"]:hover {
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.07),
+    0 0 0 1px rgba(225, 20, 20, 0.14),
+    0 0 22px -17px rgba(239, 68, 68, 0.75),
+    6px 6px 0 rgba(0, 0, 0, 0.28);
+}
+
+/* Unify the border only where the panel isn't carrying an accent hue. */
+main [class*="0d0f12"]:not([class*="border-red-"]):not([class*="border-amber-"]):not([class*="border-blue-"]):not([class*="border-emerald-"]),
+main [class*="090b0d"]:not([class*="border-red-"]):not([class*="border-amber-"]):not([class*="border-blue-"]):not([class*="border-emerald-"]),
+main [class*="0b0d10"]:not([class*="border-red-"]):not([class*="border-amber-"]):not([class*="border-blue-"]):not([class*="border-emerald-"]) {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* Recessed form fields to complement the raised panels. */
+main [class*="111317"] {
+  background-image: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.32),
+    rgba(255, 255, 255, 0.014)
+  );
+  box-shadow: inset 0 1px 3px 0 rgba(0, 0, 0, 0.55);
+}
+
+/* Dense brutalist layout: large utility paddings are capped inside data panels. */
+main [class~="p-7"],
+main [class~="p-6"] {
+  padding: 1.25rem;
+}
+
+main [class~="gap-5"] {
+  gap: 1rem;
 }
 
 button:focus-visible,
@@ -105,7 +293,7 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 a:focus-visible {
-  outline: 1px solid rgba(239, 68, 68, 0.8);
+  outline: 1px solid rgba(239, 68, 68, 0.85);
   outline-offset: 2px;
 }
 
@@ -114,8 +302,69 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
+@keyframes sync-success-shutter {
+  0% {
+    transform: translateX(-105%);
+  }
+  12% {
+    transform: translateX(0);
+    box-shadow:
+      inset 0 0 18px rgba(236, 253, 245, 0.38),
+      0 0 18px rgba(16, 185, 129, 0.58);
+  }
+  55% {
+    transform: translateX(0);
+    box-shadow:
+      inset 0 0 18px rgba(236, 253, 245, 0.3),
+      0 0 15px rgba(16, 185, 129, 0.48);
+  }
+  100% {
+    transform: translateX(105%);
+    box-shadow: none;
+  }
+}
+
+@keyframes refresh-success-shutter {
+  0% {
+    transform: translateX(110%);
+  }
+  12% {
+    transform: translateX(0);
+    box-shadow:
+      inset 0 0 14px rgba(236, 253, 245, 0.34),
+      0 0 14px rgba(16, 185, 129, 0.48);
+  }
+  55% {
+    transform: translateX(0);
+    box-shadow:
+      inset 0 0 12px rgba(236, 253, 245, 0.24),
+      0 0 11px rgba(16, 185, 129, 0.38);
+  }
+  100% {
+    transform: translateX(-110%);
+    box-shadow: none;
+  }
+}
+
+@keyframes refresh-check-lock {
+  0%,
+  10% {
+    transform: scale(0.45) rotate(-35deg);
+  }
+  18% {
+    transform: scale(1.16) rotate(4deg);
+  }
+  25%,
+  72% {
+    transform: scale(1) rotate(0);
+  }
+  100% {
+    transform: scale(0.9) rotate(0);
+  }
+}
+
 ::selection {
-  background: rgba(210, 10, 10, 0.45);
+  background: rgba(225, 20, 20, 0.5);
   color: white;
 }
 
@@ -125,11 +374,15 @@ a {
 }
 
 ::-webkit-scrollbar-track {
-  background: #08090a;
+  background: #0a0b0c;
 }
 
 ::-webkit-scrollbar-thumb {
-  border: 3px solid #08090a;
+  border: 3px solid #0a0b0c;
   border-radius: 0;
-  background: #29292e;
+  background: #34343a;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4a2020;
 }

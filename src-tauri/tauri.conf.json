@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "UFC Panel",
+  "productName": "Combat Intelligence",
   "version": "0.1.0",
   "identifier": "com.ufcpanel.desktop",
   "build": {
@@ -13,11 +13,12 @@
     "windows": [
       {
         "label": "main",
-        "title": "UFC Panel · Combat Intelligence",
+        "title": "Combat Intelligence",
         "width": 1440,
         "height": 900,
         "minWidth": 1100,
         "minHeight": 700,
+        "decorations": false,
         "center": true,
         "resizable": true,
         "fullscreen": false
@@ -28,7 +29,7 @@
         "enable": true,
         "scope": ["$APPDATA/**"]
       },
-      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' asset: http://asset.localhost data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost https:; img-src 'self' asset: http://asset.localhost data: https:; media-src 'self' asset: http://asset.localhost blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
     }
   },
   "bundle": {
