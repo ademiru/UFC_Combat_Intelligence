@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Combat Intelligence",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "com.ufcpanel.desktop",
   "build": {
     "beforeDevCommand": "corepack pnpm dev",
@@ -27,14 +27,18 @@
     "security": {
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/**"]
+        "scope": [
+          "$APPDATA/**"
+        ]
       },
       "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost https:; img-src 'self' asset: http://asset.localhost data: https:; media-src 'self' asset: http://asset.localhost blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "createUpdaterArtifacts": true,
     "category": "Utility",
     "shortDescription": "Local-first UFC analytics and comparison tool",
