@@ -1,6 +1,6 @@
 [package]
 name = "ufc-panel"
-version = "0.2.0"
+version = "0.2.1"
 description = "Local-first UFC analytics desktop application"
 authors = ["UFC Panel Team"]
 edition = "2021"
