@@ -1,190 +1,170 @@
-# UFC Panel
-
-UFC Panel; Tauri v2, Next.js ve SQLite üzerine kurulu, tamamen yerel çalışan bir UFC/MMA analiz masaüstü uygulamasıdır. İlk faz; statik frontend, masaüstü kabuğu, güvenli SQL izinleri, sürümlü veritabanı migration'ı ve dört ana modülün navigasyon iskeletini içerir.
-
-## 1. Kurulum komutları
-
-### Windows önkoşulları
-
-Tauri'nin Windows üzerinde Rust, Microsoft C++ Build Tools ve WebView2'ye ihtiyacı vardır. Node.js 20.9+ kullanın.
-
-```powershell
-winget install OpenJS.NodeJS.LTS
-winget install Rustlang.Rustup
-winget install Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
-```
-
-Windows 10 (1803+) ve Windows 11'de WebView2 çoğunlukla hazır gelir. Eksikse Microsoft WebView2 Runtime kurulmalıdır. Yeni terminal açtıktan sonra:
-
-```powershell
-node --version
-rustc --version
-cargo --version
-corepack enable
-```
-
-### Sıfırdan Next.js + Tauri v2 oluşturma
-
-Aşağıdaki komutlar aynı mimariyi boş bir klasörde kurar:
-
-```powershell
-corepack pnpm create next-app@latest ufc-panel --ts --tailwind --eslint --app --src-dir --import-alias "@/*" --use-pnpm
-cd ufc-panel
-
-pnpm add -D @tauri-apps/cli@latest
-pnpm add @tauri-apps/api@latest
-pnpm tauri init
-```
-
-`pnpm tauri init` soruları için:
+<div align="center">
 
 ```text
-App name: UFC Panel
-Window title: UFC Panel · Combat Intelligence
-Web assets location: ../out
-Dev server URL: http://localhost:3000
-Frontend dev command: pnpm dev
-Frontend build command: pnpm build
+ ██████╗ ██████╗ ███╗   ███╗██████╗  █████╗ ████████╗
+██╔════╝██╔═══██╗████╗ ████║██╔══██╗██╔══██╗╚══██╔══╝
+██║     ██║   ██║██╔████╔██║██████╔╝███████║   ██║
+██║     ██║   ██║██║╚██╔╝██║██╔══██╗██╔══██║   ██║
+╚██████╗╚██████╔╝██║ ╚═╝ ██║██████╔╝██║  ██║   ██║
+ ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚═════╝ ╚═╝  ╚═╝   ╚═╝
+
+██╗███╗   ██╗████████╗███████╗██╗     ██╗     ██╗ ██████╗ ███████╗███╗   ██╗ ██████╗███████╗
+██║████╗  ██║╚══██╔══╝██╔════╝██║     ██║     ██║██╔════╝ ██╔════╝████╗  ██║██╔════╝██╔════╝
+██║██╔██╗ ██║   ██║   █████╗  ██║     ██║     ██║██║  ███╗█████╗  ██╔██╗ ██║██║     █████╗
+██║██║╚██╗██║   ██║   ██╔══╝  ██║     ██║     ██║██║   ██║██╔══╝  ██║╚██╗██║██║     ██╔══╝
+██║██║ ╚████║   ██║   ███████╗███████╗███████╗██║╚██████╔╝███████╗██║ ╚████║╚██████╗███████╗
+╚═╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝╚══════╝╚══════╝╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝ ╚═════╝╚══════╝
 ```
 
-Next.js statik export ayarı [next.config.ts](./next.config.ts) içinde yapılır:
+### Oktagonun içini değil, arkasındaki veriyi gör.
 
-```ts
-const nextConfig = {
-  output: "export",
-  images: { unoptimized: true },
-  trailingSlash: true,
-};
-```
+Maç kartları, dövüşçü profilleri, canlı sonuçlar ve stil analizleri için hazırlanmış ücretsiz UFC masaüstü merkezi.
 
-Tauri, üretim derlemesinde oluşan `out/` klasörünü `frontendDist: "../out"` ile paketler.
+[![Son Sürüm](https://img.shields.io/github/v/release/ademiru/UFC_Combat_Intelligence?style=for-the-badge&color=dc2626&label=SON%20SÜRÜM)](https://github.com/ademiru/UFC_Combat_Intelligence/releases/latest)
+[![Windows](https://img.shields.io/badge/WINDOWS-10%20%2F%2011-111827?style=for-the-badge&logo=windows)](https://github.com/ademiru/UFC_Combat_Intelligence/releases/latest)
+[![Topluluk](https://img.shields.io/badge/%C3%9CCRETS%C4%B0Z-TOPLULUK%20PROJES%C4%B0-059669?style=for-the-badge)](https://github.com/ademiru/UFC_Combat_Intelligence)
 
-### Bu repoyu çalıştırma
+### [⬇ Windows için son sürümü indir](https://github.com/ademiru/UFC_Combat_Intelligence/releases/latest)
 
-```powershell
-corepack pnpm install
-corepack pnpm tauri dev
-```
+</div>
 
-Yalnızca web arayüzünü geliştirmek için:
+---
 
-```powershell
-corepack pnpm dev
-```
+## MAÇ GECESİ BAŞLADIĞINDA
 
-Üretim kontrolleri:
+Sekmeler arasında kaybolma. Combat Intelligence sana tek ekranda şunları söyler:
 
-```powershell
-corepack pnpm typecheck
-corepack pnpm lint
-corepack pnpm build
-corepack pnpm tauri build
-```
-
-## 2. `tauri-plugin-sql` ve SQLite
-
-Plugin'i yeni bir projeye eklemek için:
-
-```powershell
-pnpm add @tauri-apps/plugin-sql@latest
-cd src-tauri
-cargo add tauri-plugin-sql --features sqlite
-cd ..
-```
-
-Tauri'nin önerdiği kısa yol da kullanılabilir:
-
-```powershell
-pnpm tauri add sql
-```
-
-SQLite özelliğinin `src-tauri/Cargo.toml` içinde açık olduğunu kontrol edin:
-
-```toml
-tauri-plugin-sql = { version = "2", features = ["sqlite"] }
-```
-
-Bu projede:
-
-- Plugin ve migration kaydı [src-tauri/src/lib.rs](./src-tauri/src/lib.rs) içindedir.
-- İlk şema [src-tauri/migrations/0001_initial.sql](./src-tauri/migrations/0001_initial.sql) dosyasındadır.
-- Webview SQL erişimi [src-tauri/capabilities/default.json](./src-tauri/capabilities/default.json) içindeki `sql:default` izniyle sınırlandırılır.
-- Frontend bağlantısı [src/lib/database.ts](./src/lib/database.ts) üzerinden tekil ve gecikmeli (`lazy`) açılır.
-- `ufc_data.db`, işletim sisteminin uygulama veri dizininde Tauri tarafından oluşturulur; proje klasörüne yazılmaz.
-
-Migration sürümünü değiştirmeden yayınlanmış SQL dosyasını düzenlemeyin. Sonraki şema değişiklikleri `0002_...sql` gibi yeni bir dosya ve daha yüksek migration sürümü olarak eklenmelidir.
-
-## 3. Klasör mimarisi
+- Sıradaki UFC etkinliği ne zaman?
+- Türkiye saatine göre ana kart kaçta başlıyor?
+- Son etkinlikte kim, nasıl ve kaçıncı rauntta kazandı?
+- Main Card, Prelims ve Early Prelims eşleşmeleri neler?
+- İki dövüşçü arasında boy, reach, tempo ve stil avantajı kimde?
+- Dövüşçünün son maçları ve performans eğrisi nasıl?
 
 ```text
-ufc-panel/
-├─ src/
-│  ├─ app/                       # Next.js App Router sayfaları
-│  │  ├─ analytics/              # Oktagon Derin Analizi
-│  │  ├─ fighters/               # Fighter Explorer
-│  │  ├─ h2h/                    # H2H Laboratuvarı
-│  │  ├─ globals.css             # Dark theme ve tasarım tokenları
-│  │  ├─ layout.tsx              # Uygulama kök layout'u
-│  │  └─ page.tsx                # Dashboard / Fight Center
-│  ├─ assets/                    # Kaynak logo ve görseller
-│  ├─ components/
-│  │  ├─ brand/                  # Marka bileşenleri
-│  │  ├─ layout/                 # AppShell ve Sidebar
-│  │  ├─ shared/                 # Modüller arası ortak bileşenler
-│  │  └─ ui/                     # shadcn/ui bileşenleri
-│  ├─ hooks/                     # Paylaşılan React hook'ları (sonraki faz)
-│  ├─ lib/                       # Database, yardımcılar ve domain servisleri
-│  └─ types/                     # Domain tipleri (sonraki faz)
-├─ src-tauri/
-│  ├─ capabilities/              # Tauri v2 izinleri
-│  ├─ icons/                     # Masaüstü ve mobil uygulama ikonları
-│  ├─ migrations/                # Sürümlü SQLite migration dosyaları
-│  ├─ src/                       # Rust uygulama girişi
-│  ├─ Cargo.toml
-│  └─ tauri.conf.json
-├─ components.json               # shadcn/ui yapılandırması
-├─ next.config.ts                # Statik export ayarı
-└─ package.json
+┌─ NEXT OPERATION ───────────────────────────────────────────────┐
+│  UFC FIGHT NIGHT                         TÜRKİYE SAATİ  03:00  │
+│                                                                │
+│  RED CORNER              VS              BLUE CORNER           │
+│  PRESSURE WRESTLER                       COUNTER STRIKER        │
+│                                                                │
+│  REACH  +5 CM       TD DEF  %82       LAST 5  W W L W W       │
+└────────────────────────────────────────────────────────────────┘
 ```
 
-Önerilen büyüme kuralı: sayfalar veri sorgulamaz; `lib/repositories` veri erişimini, `lib/services` analiz kurallarını, `components/features/<module>` ise modüle özgü arayüzü taşır. Rust tarafına yalnızca yoğun hesaplama, dosya sistemi veya işletim sistemi yetkisi gerektiren işler alınır.
+## KOMUTA MERKEZİ
 
-## İlk fazda hazır olanlar
+### Fight Center
 
-- Sabit, koyu temalı masaüstü sidebar
-- Dashboard, Fighter Explorer, H2H ve Oktagon Analizi rotaları
-- UFC kırmızısı tasarım tokenları ve başlangıç shadcn/ui Button bileşeni
-- Next.js statik export
-- Tauri v2 capability/CSP yapılandırması
-- SQLite tabloları, foreign key'ler, kontroller ve sorgu indeksleri
-- Tauri uygulama ikon seti
+Yaklaşan kartı, geri sayımı ve Türkiye saatini gösterir. Tamamlanan etkinliklerde kazanan, kaybeden, bitiriş yöntemi, raunt ve süre anında görünür.
 
-## Dahili çevrimdışı veri seti
+### Roster / DB
 
-Uygulama ilk açılışta `0002_seed_starter_dataset.sql` migration'ını otomatik çalıştırır. İnternet bağlantısı gerektirmeden aşağıdaki veriler hazır gelir:
+UFC kadrosunda isim, takma ad, sıklet, stil ve performans değerleriyle arama yap. Dövüşçü kartından doğrudan ayrıntılı profile geç.
 
-- 39 aktif UFC dövüşçüsü ve detaylı performans metrikleri
-- 11 güncel sıklet şampiyonu
-- 3 yaklaşan etkinlik ve 10 Main Card eşleşmesi
-- Fiziksel ölçüler, rekor, SLpM/SApM, vuruş ve takedown yüzdeleri
-- Bitiriş yöntemleri ile kafa/gövde/bacak vuruş dağılımları
+### Fighter Intel
 
-Veri anlık görüntü tarihi `20 Haziran 2026` olarak arayüzde gösterilir. Kaynak veriler UFC.com sıralama, etkinlik ve sporcu sayfalarından doğrulanmıştır. Sonraki veri güncellemeleri mevcut migration dosyasını değiştirmek yerine yeni bir migration sürümüyle eklenmelidir.
+Bir dövüşçüyü sadece rekorundan ibaret görme:
 
-## Online mod ve güncel veriler
+- Fiziksel profil ve reach
+- Vuruş hacmi ve isabet oranı
+- Takedown hücumu ve savunması
+- KO, submission ve karar dağılımı
+- Son maçlar ve kariyer özeti
+- Cephanelik radar grafiği
+- Resmî UFC tanıtım, röportaj ve öne çıkan videoları
 
-Üst çubuktaki **Online Mod** anahtarı açıldığında Rust senkronizasyon servisi doğrudan resmî UFC.com sıralama, etkinlik ve sporcu sayfalarını okur. Güncel şampiyonlar, yaklaşan kartlar, eşleşmeler ve sporcu metrikleri tek bir SQLite transaction'ı içinde `ufc_data.db` önbelleğine yazılır.
+Videolar uygulamayı şişirmez. Yalnızca katalog bilgisi yerelde tutulur; yayınlar resmî UFC kaynağından uygulamanın kendi oynatıcısında izlenir.
 
-- Son başarılı güncellemenin üzerinden 6 saat geçtiyse uygulama açılışta otomatik senkronize olur.
-- Yenile düğmesiyle istenildiği zaman manuel güncelleme yapılabilir.
-- Ağ veya kaynak hatasında transaction geri alınır; çalışan son yerel veri korunur.
-- Resmî sporcu fotoğrafları uygulama veri dizinine indirilir ve çevrimdışı kullanılır.
-- Takip edilen sporcuların son beş resmî maçı; sonuç, rakip, etkinlik, yöntem, raunt ve süreyle yerel veritabanına kaydedilir.
-- Eksik resmî ölçüler arayüzde `—` olarak gösterilir ve mevcut doğrulanmış değerlerin üzerine sıfır yazılmaz.
-- Arayüzde kaynak, son senkron zamanı, aşama ilerlemesi ve çevrimdışı önbellek durumu açıkça gösterilir.
+### Tactical Matchup
 
-Canlı senkronizasyon kapsamı; resmî sıralamalar, yaklaşan etkinlikler, uygulamanın takip ettiği sporcu profilleri ve bu sporcuların son beş maçıdır. H2H skorları ile kardiyo projeksiyonları resmî UFC tahmini değil, yerel istatistiklerden üretilen analiz çıktılarıdır. Uygulama henüz UFC'nin tüm tarihsel maç arşivini veya bütün aktif kadrosunu eksiksiz kapsadığını iddia etmez.
+İki dövüşçüyü yan yana getir. Boy, reach, striking, grappling, savunma, tempo ve bitiricilik farklarını tek bakışta karşılaştır.
 
-Online ayrıştırma ve SQLite yazma akışı `src-tauri/src/sync.rs`, mod yönetimi ise `src/components/providers/data-provider.tsx` içindedir.
+### Analytics Lab
 
-Resmî kaynaklar: [Tauri + Next.js](https://v2.tauri.app/start/frontend/nextjs/), [Tauri SQL Plugin](https://v2.tauri.app/plugin/sql/), [Next.js Static Exports](https://nextjs.org/docs/app/guides/static-exports).
+Sıkletler, bitiriş biçimleri, liderler ve organizasyon genelindeki eğilimler için hazırlanmış istatistik laboratuvarı.
+
+## ÇEVRİMİÇİ + YEREL
+
+```text
+          RESMÎ UFC VERİSİ
+                 │
+                 ▼
+        ┌─────────────────┐
+        │ ONLINE SYNC     │
+        └────────┬────────┘
+                 │ doğrula + kaydet
+                 ▼
+        ┌─────────────────┐
+        │ YEREL ÖNBELLEK  │
+        └────────┬────────┘
+                 │
+                 ▼
+         UYGULAMA HER ZAMAN HAZIR
+```
+
+Online Mod açıldığında güncel UFC verileri alınır ve güvenli biçimde yerel veritabanına kaydedilir. Bağlantı kesilirse son çalışan veriler kullanılmaya devam eder. Başarısız bir güncelleme mevcut verilerini bozmaz.
+
+## GÜNCELLEMELER
+
+Yeni sürüm yayımlandığında uygulama bunu otomatik algılar.
+
+- Yeni güncelleme paneli açılır.
+- Sürüm notlarını okuyabilirsin.
+- **Şimdi güncelle** diyerek indirip kurabilirsin.
+- **Sonra** diyerek paneli kapatabilirsin.
+- Paket imzası kurulumdan önce doğrulanır.
+- İşlem tamamlandığında uygulama yeniden açılır.
+
+Hiçbir güncelleme zorla kurulmaz; karar her zaman sende.
+
+## KURULUM
+
+1. [Releases](https://github.com/ademiru/UFC_Combat_Intelligence/releases/latest) sayfasını aç.
+2. `Combat.Intelligence_*_x64-setup.exe` dosyasını indir.
+3. Kurulumu tamamla ve uygulamayı aç.
+4. Güncel kartlar için üst panelden **Online Mod** seçeneğini etkinleştir.
+
+> Windows ilk kurulumda SmartScreen uyarısı gösterebilir. Dosyayı yalnızca bu deponun resmî Releases sayfasından indirdiğinden emin ol.
+
+## NEDEN COMBAT INTELLIGENCE?
+
+Çünkü bir maç yalnızca `W` veya `L` değildir.
+
+Bir dövüşçünün baskı altında nasıl davrandığı, mesafeyi nasıl kullandığı, güreşe karşı ne kadar dirençli olduğu ve ilerleyen rauntlarda temposunu koruyup koruyamadığı sonucu belirler. Combat Intelligence bu parçaları okunabilir, hızlı ve maç gecesinde gerçekten işe yarayan bir ekranda birleştirir.
+
+```text
+      ┌─────────────── TALE OF THE TAPE ───────────────┐
+      │                                                │
+      │   STRIKING   ████████░░   82                  │
+      │   GRAPPLING  █████████░   91                  │
+      │   DEFENCE    ███████░░░   74                  │
+      │   CARDIO     ████████░░   86                  │
+      │                                                │
+      │        DATA DOESN'T FIGHT. FIGHTERS DO.       │
+      └────────────────────────────────────────────────┘
+```
+
+## TOPLULUK
+
+Bir veri hatası, eksik dövüşçü veya geliştirme fikri mi buldun?
+
+- [Hata bildir](https://github.com/ademiru/UFC_Combat_Intelligence/issues/new)
+- [Tüm talepleri görüntüle](https://github.com/ademiru/UFC_Combat_Intelligence/issues)
+- Projeyi beğendiysen yıldız bırak ⭐
+
+## YASAL NOT
+
+Combat Intelligence bağımsız ve hayran yapımı bir projedir. UFC, Ultimate Fighting Championship veya bağlı kuruluşları tarafından geliştirilmemiş, desteklenmemiş ya da onaylanmamıştır. UFC adı, etkinlik bilgileri ve ilgili marka varlıkları kendi hak sahiplerine aittir. İstatistiksel analizler bilgilendirme ve eğlence amaçlıdır; bahis tavsiyesi değildir.
+
+---
+
+<div align="center">
+
+```text
+[ COMBAT INTELLIGENCE // LOCAL-FIRST FIGHT ANALYSIS SYSTEM ]
+```
+
+**FIGHT NIGHT. FULL CONTEXT.**
+
+</div>
