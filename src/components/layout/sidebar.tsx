@@ -68,6 +68,14 @@ export const primaryNavigation: NavigationItem[] = [
   },
 ];
 
+export const settingsNavigation: NavigationItem = {
+  href: "/settings",
+  label: "Ayarlar",
+  shortLabel: "Sistem Ayarları",
+  description: "Bağlantı, güncelleme ve yerel veri yönetimi",
+  icon: Settings2,
+};
+
 function isActiveRoute(pathname: string, href: string) {
   return href === "/" ? pathname === href : pathname.startsWith(href);
 }
@@ -335,24 +343,39 @@ export function Sidebar() {
           />
         </div>
 
-        <button
-          type="button"
-          className="flex w-full items-center gap-3 rounded-none border border-transparent px-3 py-2 text-xs font-medium text-zinc-600 transition-colors hover:border-white/[0.08] hover:bg-white/[0.025] hover:text-zinc-300"
+        <Link
+          href={settingsNavigation.href}
+          aria-current={isActiveRoute(pathname, settingsNavigation.href) ? "page" : undefined}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-none border px-3 py-2.5 text-xs font-medium transition-colors",
+            isActiveRoute(pathname, settingsNavigation.href)
+              ? "border-red-500/25 bg-red-500/[0.08] text-zinc-100"
+              : "border-transparent text-zinc-600 hover:border-white/[0.08] hover:bg-white/[0.025] hover:text-zinc-300",
+          )}
         >
           <Settings2 className="size-4" />
           Ayarlar
-          <span className="font-tabular ml-auto rounded bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-bold tracking-wider text-zinc-700 uppercase">
-            Yakında
+          <span className="font-tabular ml-auto border border-white/[0.07] bg-white/[0.025] px-1.5 py-0.5 text-[8px] font-bold tracking-wider text-zinc-600 uppercase">
+            06
           </span>
-        </button>
+        </Link>
       </div>
     </aside>
   );
 }
 
 export function getNavigationItem(pathname: string) {
+  if (isActiveRoute(pathname, settingsNavigation.href)) return settingsNavigation;
   return (
     primaryNavigation.find((item) => isActiveRoute(pathname, item.href)) ??
     primaryNavigation[0]
+  );
+}
+
+export function getNavigationIndex(pathname: string) {
+  if (isActiveRoute(pathname, settingsNavigation.href)) return 6;
+  return Math.max(
+    1,
+    primaryNavigation.findIndex((item) => isActiveRoute(pathname, item.href)) + 1,
   );
 }

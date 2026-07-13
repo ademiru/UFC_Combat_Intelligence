@@ -14,6 +14,7 @@ import {
 } from "react";
 
 import { getDatabase, resetDatabaseConnection } from "@/lib/database";
+import { readAppPreferences } from "@/lib/preferences";
 
 export interface Fighter {
   id: number;
@@ -395,6 +396,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (
       loading ||
       !onlineMode ||
+      !readAppPreferences().automaticDataSync ||
       syncing ||
       autoSyncChecked.current
     ) {

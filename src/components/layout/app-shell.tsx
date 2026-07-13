@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect } from "react";
 
-import { getNavigationItem, primaryNavigation, Sidebar } from "@/components/layout/sidebar";
+import { getNavigationIndex, getNavigationItem, Sidebar } from "@/components/layout/sidebar";
 import { GlobalSearch } from "@/components/layout/global-search";
 import { SyncControl, SyncProgressStrip } from "@/components/layout/sync-control";
 import { UpdateControl } from "@/components/layout/update-control";
@@ -29,10 +29,7 @@ function AppChrome({ children }: AppShellProps) {
   const router = useRouter();
   const { syncing } = useUfcData();
   const currentSection = getNavigationItem(pathname);
-  const currentSectionIndex = Math.max(
-    1,
-    primaryNavigation.findIndex((item) => item.href === currentSection.href) + 1,
-  );
+  const currentSectionIndex = getNavigationIndex(pathname);
   const isHome = pathname === "/";
 
   useEffect(() => {

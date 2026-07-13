@@ -17,6 +17,8 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { useAppPreferences } from "@/hooks/use-app-preferences";
+import { UPDATE_CHECK_REQUESTED } from "@/lib/preferences";
 import { cn } from "@/lib/utils";
 
 type UpdateStatus =
@@ -42,9 +44,9 @@ function errorMessage(error: unknown) {
 }
 
 export function UpdateControl() {
+  const { preferences } = useAppPreferences();
   const rootRef = useRef<HTMLDivElement>(null);
   const updateRef = useRef<Update | null>(null);
-  const autoCheckStarted = useRef(false);
   const checkLock = useRef(false);
   const installLock = useRef(false);
   const [status, setStatus] = useState<UpdateStatus>("idle");
@@ -159,8 +161,7 @@ export function UpdateControl() {
 
     void getVersion().then(setCurrentVersion).catch(() => undefined);
 
-    if (autoCheckStarted.current) return;
-    autoCheckStarted.current = true;
+    if (!preferences.automaticUpdateChecks) return;
 
     const timer = window.setTimeout(() => void checkForUpdates(false), 3500);
     const interval = window.setInterval(
@@ -171,6 +172,12 @@ export function UpdateControl() {
       window.clearTimeout(timer);
       window.clearInterval(interval);
     };
+  }, [checkForUpdates, preferences.automaticUpdateChecks]);
+
+  useEffect(() => {
+    const onRequested = () => void checkForUpdates(true);
+    window.addEventListener(UPDATE_CHECK_REQUESTED, onRequested);
+    return () => window.removeEventListener(UPDATE_CHECK_REQUESTED, onRequested);
   }, [checkForUpdates]);
 
   useEffect(() => {
