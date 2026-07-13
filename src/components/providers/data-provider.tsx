@@ -13,7 +13,7 @@ import {
   useState,
 } from "react";
 
-import { getDatabase } from "@/lib/database";
+import { getDatabase, resetDatabaseConnection } from "@/lib/database";
 
 export interface Fighter {
   id: number;
@@ -145,6 +145,10 @@ function withTimeout<T>(promise: Promise<T>, milliseconds: number, message: stri
   });
 }
 
+function wait(milliseconds: number) {
+  return new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
 const UfcDataContext = createContext<DataState | null>(null);
 
 const fighterQuery = `
@@ -200,6 +204,40 @@ const fightHistoryQuery = `
   ORDER BY h.fighter_id, h.fight_date DESC
 `;
 
+async function readLocalSnapshot() {
+  const database = await getDatabase();
+  return withTimeout(
+    Promise.all([
+      database.select<Fighter[]>(fighterQuery),
+      database.select<UfcEvent[]>(eventQuery),
+      database.select<Fight[]>(fightQuery),
+      database.select<FightHistory[]>(fightHistoryQuery),
+      database.select<Array<{ key: string; value: string }>>(
+        "SELECT key, value FROM app_metadata",
+      ),
+    ]),
+    20_000,
+    "Yerel veritabanı 20 saniye içinde yanıt vermedi.",
+  );
+}
+
+async function readLocalSnapshotWithRecovery() {
+  const retryDelays = [0, 320, 900] as const;
+  let lastError: unknown;
+
+  for (const delay of retryDelays) {
+    if (delay > 0) await wait(delay);
+    try {
+      return await readLocalSnapshot();
+    } catch (error) {
+      lastError = error;
+      resetDatabaseConnection();
+    }
+  }
+
+  throw lastError;
+}
+
 export function DataProvider({ children }: { children: ReactNode }) {
   const [fighters, setFighters] = useState<Fighter[]>([]);
   const [events, setEvents] = useState<UfcEvent[]>([]);
@@ -227,17 +265,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       } catch {
         // Web-only development has no Tauri command bridge.
       }
-      const database = await getDatabase();
       const [fighterRows, eventRows, fightRows, historyRows, metadataRows] =
-        await withTimeout(Promise.all([
-          database.select<Fighter[]>(fighterQuery),
-          database.select<UfcEvent[]>(eventQuery),
-          database.select<Fight[]>(fightQuery),
-          database.select<FightHistory[]>(fightHistoryQuery),
-          database.select<Array<{ key: string; value: string }>>(
-            "SELECT key, value FROM app_metadata",
-          ),
-        ]), 20_000, "Yerel veritabanı 20 saniye içinde yanıt vermedi.");
+        await readLocalSnapshotWithRecovery();
 
       setFighters(fighterRows);
       setEvents(eventRows);
@@ -250,7 +279,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setOnlineModeState(nextMetadata.online_mode_enabled === "1");
     } catch (cause) {
       const message =
-        cause instanceof Error ? cause.message : "Yerel veri okunamadı.";
+        cause instanceof Error
+          ? cause.message
+          : typeof cause === "string"
+            ? cause
+            : "Yerel veri okunamadı.";
       if (options?.silent) setSyncError(message);
       else setError(message);
     } finally {

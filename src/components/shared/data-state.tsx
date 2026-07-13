@@ -35,7 +35,7 @@ export function DataState({ loading, error, onRetry }: DataStateProps) {
             <AlertTriangle className="size-6" />
           </span>
           <p className="mt-5 text-sm font-semibold text-zinc-100">
-            Veritabanına bağlanılamadı
+            Yerel veriler açılamadı
           </p>
           <p className="mt-2 text-xs leading-5 text-zinc-500">{error}</p>
           <Button className="mt-5" size="sm" onClick={onRetry}>
